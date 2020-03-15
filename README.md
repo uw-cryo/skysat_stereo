@@ -16,6 +16,7 @@ Major Software
 - demcoreg
 - Python stack 
 - Python Geospatial stack
+
 The scripts have been developed and tested on Linux operating system and should work for all nix platforms. No tests have been performed on Windows OS.
 
 Development Team
