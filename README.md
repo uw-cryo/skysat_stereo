@@ -11,11 +11,11 @@ orientation for all scenes, minimizing residuals of matched feature reprojection
 merged after outlier removal to obtain the final composite DEM.
 
 Major Software 
-NASA Ames Stereo Pipeline
-pygeotools
-demcoreg
-Python stack 
-Python Geospatial stack
+- NASA Ames Stereo Pipeline
+- pygeotools
+- demcoreg
+- Python stack 
+- Python Geospatial stack
 The scripts have been developed and tested on Linux operating system and should work for all nix platforms. No tests have been performed on Windows OS.
 
 Development Team
