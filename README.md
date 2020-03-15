@@ -10,7 +10,7 @@ orientation for all scenes, minimizing residuals of matched feature reprojection
 - We then compute pairwise DEMs from all possible stereo pair combinations of the refined images, which are
 merged after outlier removal to obtain the final composite DEM.
 
-* Major Software *
+Major Software 
 NASA Ames Stereo Pipeline
 pygeotools
 demcoreg
@@ -25,4 +25,4 @@ Development Team
 - Scott Henderson (UW)
 
 Acknowledgement:
-- Data was funded through the NASA Commercial Data Buy Pilot allocation to NASA Stereo2SWE Project. Shashank Bhushan was funded through the NASA FINESST and NASA HiMAT awards.
+- Data was funded through the NASA Commercial Data Buy Pilot allocation to NASA Stereo2SWE (80NSSC18K1405) Project. Shashank Bhushan was funded through the NASA FINESST (80NSSC19K1338) and NASA HiMAT (NNX16AQ88G) awards. David Shean, Oleg Alexandrov and Scott Henderson were funded through the NASA Stereo2SWE (80NSSC18K1405) award.
