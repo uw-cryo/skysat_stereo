@@ -1,29 +1,28 @@
 name: skysat_stereo
 channels:
-	- conda-forge
+ - conda-forge
 dependencies:
-	# core data science 
-	- python=3.7
-	- scipy
-	- numpy
-	- pandas
-	- matplotlib
-	# geospatial (raster+vector)
-	- gdal=2.4
-	- rasterio
-	- geopandas
-	- shapely
-	- contextily
-	- descartes
-	# misc
-	- pip
-
-	- pip:
-		# misc
-		- p_tqdm
-		# geospatial+plotting
-		- "--editable=git+https://github.com/dshean/pygeotools.git#egg=pygeotools"
-		- "--editable=git+https://github.com/dshean/demcoreg.git#egg=demcoreg"
-		- "--editable=git+https://github.com/dshean/imview.git#egg=imview"
-		- "--editable=git+https://github.com/cmla/rpcm.git#egg=rpcm"
-# review and add bare
+ # core data science 
+ - python=3.7
+ - scipy
+ - numpy
+ - pandas
+ - matplotlib
+ # geospatial (raster+vector)
+ - gdal=2.4
+ - rasterio
+ - geopandas
+ - shapely
+ - contextily
+ - descartes
+ # misc
+ - pip
+ - pip:
+  # misc
+  - p_tqdm
+  # geospatial+plotting
+  - "--editable=git+https://github.com/dshean/pygeotools.git#egg=pygeotools"
+  - "--editable=git+https://github.com/dshean/demcoreg.git#egg=demcoreg"
+  - "--editable=git+https://github.com/dshean/imview.git#egg=imview"
+  - "--editable=git+https://github.com/cmla/rpcm.git#egg=rpcm"
+  # review and add bare
