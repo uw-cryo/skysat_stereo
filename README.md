@@ -1,4 +1,4 @@
-# skysat_3d
+# skysat_stereo
 A collection of scripts and functions to process Planet Skysat imagery 
 - Planet Skysat is a 13 satellite LEO constellation, capable of acquiring videos, triplet stereo and mono images at resolutions of 0.7 to 0.9 m. 
 - The videos (continous 30 fps video at varying angles)  and triplet stereo (3 image sets from 3 view angles) can be used for high-resolution DEM generation (2 to 4 m/px). 
