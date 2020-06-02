@@ -14,8 +14,14 @@ def read_tsai_dict(tsai):
     """
     read tsai frame model from asp and return a python dictionary containing the parameters
     See ASP's frame camera implementation here: https://stereopipeline.readthedocs.io/en/latest/pinholemodels.html
-    input: tsai: path to ASP frame camera model 
-    output: dictionary containing camera model parameters 
+    Parameters
+    ----------
+    tsai: str
+        path to ASP frame camera model 
+    Returns
+    ----------
+    output: dictionary 
+        dictionary containing camera model parameters 
     #TODO: support distortion model
     """
     camera = os.path.basename(tsai)
@@ -39,13 +45,21 @@ def make_tsai(outfn,cu,cv,fu,fv,rot_mat,C,pitch):
     """
     write out pinhole model with given parameters
     See ASP's frame camera implementation here: https://stereopipeline.readthedocs.io/en/latest/pinholemodels.html
-    inputs:
-    # cu,cv: optical center (x,y)
-    # fu,fv: focal length (x,y)
-    # rot_mat: 3*3 numpy array of rotation matrix
-    # camera_center: 1*3 camera center in ecef coordinates (x,y,z)
-    # pitch: pixel_pitch
-    # outfn: path where frame camera will be saved
+    Parameters
+    ----------
+    outfn: str
+        path where frame camera will be saved
+    cu,cv: float/int
+        optical center (x,y)
+    fu,fv: float/int
+        focal length (x,y)
+    rot_mat: np.array
+         3*3 numpy array of rotation matrix
+    C: np.array
+         1*3 camera center in ecef coordinates (x,y,z)
+    pitch: float/int
+        pixel_pitch
+
     - NOTE:
         # Cameras with ASP's distortion model is currently not implemneted
     """
@@ -55,27 +69,39 @@ def make_tsai(outfn,cu,cv,fu,fv,rot_mat,C,pitch):
 
 def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,out_fn=None,out_gcp=None,datum='WGS84',refdem=None,camera=None,frame_index=None):
         """
-        function to build command for ASP's cam_gen module, to initiate frame camera models from input rpc model or frame_index (skysat video)
+        function to initiate frame camera models from input rpc model or frame_index (skysat video)
         Theory: Uses camera resection principle to refine camera extrinsic from given ground control point (for rpc cameras as input, also generates initial camera extrinsic, which is then refined from tandard resection principle)
         See ASP documentation: https://stereopipeline.readthedocs.io/en/latest/tools/cam_gen.html
         Also see simple python implementation: https://github.com/jeffwalton/photogrammetry-resection/blob/master/resection.py.
-        inputs:
-        img: path to image file for which camera is to be generated
-        camera intrinsics:
-        - fl: focal length (default at 553846.153846 px for skysat)
-        - cx,cy: Optical center (default at 1280,540 px for skysat)
-        - pitch: pixel pitch (default at 1, assuming l1a is input, for l1b (surper-resolution), use 0.8)
-        gcp_related_vars
-        - ht_datum: height values to use for getting ground control from corner coordinates, in case missing in DEM
-        - gcp_std: standard deviation to be assigned to gcp (think of it as how accurate you think your gcps are, used as weights by ASP in bundle adjustment, default: 1)
-        - datum: vertical reference datum (default to WGS84)
-        - refdem: path to reference DEM to compute the ground control
-        - camera: path to initial camera (e.g. RPC camera for L1B triplets)
-        - frame_index: path to frame_index.csv containing attitude ephermis data for L1A skysat videos
-        output filenames:
-        - out_fn: path to store frame camera model at
-        - out_gcp: path to store gcp file
-        outputs: Nothing, writes out camera model and gcp at specied locations
+        Parameters
+        ----------
+        img: str
+            path to image file for which camera is to be generated
+        # camera intrinsics:
+        fl: float/int
+            focal length (default at 553846.153846 px for skysat)
+        cx,cy: float/int
+            Optical center (default at 1280,540 px for skysat)
+        pitch: float/int
+            pixel pitch (default at 1, assuming l1a is input, for l1b (surper-resolution), use 0.8)
+        # gcp_related_var:
+        ht_datum: float/int
+            height values to use for getting ground control from corner coordinates, in case missing in DEM
+        gcp_std: float/int
+            standard deviation to be assigned to gcp (think of it as how accurate you think your gcps are, used as weights by ASP in bundle adjustment, default: 1)
+        datum: str
+            vertical reference datum (default to WGS84)
+        refdem: str
+            path to reference DEM to compute the ground control
+        camera: str
+            path to initial camera (e.g. RPC camera for L1B triplets)
+        frame_index: str 
+            path to frame_index.csv containing attitude ephermis data for L1A skysat videos
+        #output filenames:
+        out_fn: str
+            path to store frame camera model at
+        out_gcp: str
+            path to store gcp file
         """
         cam_gen_opt = []
         cam_gen_opt.extend(['--focal-length',str(fl)])
@@ -99,7 +125,14 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
 def clean_img_in_gcp(row):
         """
         helper function to return basename of image path
-        See clean_gcp function for main implementation 
+        See clean_gcp function for main implementation
+        Parameters
+        ----------
+        row: dataframe row value to be renamed
+        Returns
+        ----------
+        out: str
+            basename of file
         """
         return os.path.basename(row[7])
 
@@ -108,9 +141,12 @@ def clean_gcp(gcp_list,outdir):
     ASP's cam_gen writes full path for images in the GCP files. This does not play well during bundle adjustment.
     The function returns a consolidated gcp file with all images paths only containing basenames so that bundle adjustment can roll along
     See ASP's gcp logic here: https://stereopipeline.readthedocs.io/en/latest/tools/bundle_adjust.html#bagcp
-    inputs:
-    - gcp_list: list of gcp paths
-    - outdir: directory where clean consolidated gcp will be saved as clean_gcp.gcp
+    Parameters
+    ----------
+    gcp_list: list
+        list of gcp paths
+    outdir: str 
+        directory where clean consolidated gcp will be saved as clean_gcp.gcp
     """
     df_list = [pd.read_csv(x,header=None,delimiter=r"\s+") for x in gcp_list]
     gcp_df = pd.concat(df_list, ignore_index=True)
@@ -123,10 +159,16 @@ def rpc2map (img,imgx,imgy,imgz=0):
     """
     generate 3D world coordinates from input image pixel coordinates using the RPC model
     See rpcm: https://github.com/cmla/rpcm/blob/master/rpcm/rpc_model.py for implementation
-    inputs:
-    img: image file containing RPC in in gdal tags
-    imgx,imgy,imgz: Image x,y in pixel units, z: height in world coordinates
-    output: mx,my: numpy arrays containing longitudes (mx) and latitudes (my) in geographic (EPSG:4326) coordinates
+    Parameters
+    ----------
+    img: str
+        path to image file containing RPC in in gdal tags
+    imgx,imgy,imgz: int/float
+        Image x,y in pixel units, z: height in world coordinates
+    Returns
+    ----------
+    mx,my: np.arrays
+        numpy arrays containing longitudes (mx) and latitudes (my) in geographic (EPSG:4326) coordinates
     """
     rpc = rpc_from_geotiff(img)
     mx,my = rpc.localization_iterative(imgx,imgy,imgz)
@@ -138,21 +180,37 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
     prepares bundle adjustment cmd for ASP
     most of the parameters are tweaked to handle Planet SkySat data
     See ASP's bundle adjustment documentation: https://stereopipeline.readthedocs.io/en/latest/tools/bundle_adjust.html#
-    inputs: 
-    ba_prefix: prefix with which bundle adjustment results will be saved (can be a path, general convention for repo is some path with run prefix, eg., ba_pinhole1/run
-    camera_weight: weight to be given to camera extrinsic to allow/prevent their movement during optimazation, default is 0, cameras are allowed to float as much the solver wants to
-    overlap_list: path to a text file contianing 2 images per line, which are expected to be overlapping. This limits matching to the pairs in the list only. Very useful for SkySat triplet
-    overlap_limit: if images are taken in sequence, the parameter(m) supplied here will only perform matching for an image with its (m) forward neighbours. Very useful for SkySat video
-    initial_transform: apply an initial transform supplied as a 4*4 matrix in a text file (such as those output from ASP pc_align)
-    input_adjustments: if handling RPC model, this will be adjustments from a previous invocation of the program
-    flavor: flavors of bundle adjustment to chose from. 'general_ba' will prepare arguments for simple 1 round bundle_adjustment. `2_round_gcp_1` will prepare arguments for fully free camera optimazationwhile `2_round_gcp_2` prepares arguments for only shifting the optimized camera set a hole to the median transform from all gcps. This is genrally a part of 2 step process where `2_round_gcp_2` follows a `2_round_gcp_1` invocation.
-    session: bundle adjustment session, default is nadirpinhole (prefered approach for skysat)
-    gcp_transform: tranform using gcp argument, set to true during `2_round_gcp_2`.
-    num_iterations: number of solver iterations, default at 2000.
-    lon_lat_limit: Clip the match point/gcps to lie only within this limit after optimization
-    elevation_limit: Clip the match point/gcps to lie only within this limit after optimization
+    Parameters
+    ---------- 
+    ba_prefix: str
+        prefix with which bundle adjustment results will be saved (can be a path, general convention for repo is some path with run prefix, eg., ba_pinhole1/run)
+    camera_weight: int/float
+        weight to be given to camera extrinsic to allow/prevent their movement during optimazation, default is 0, cameras are allowed to float as much the solver wants to
+    overlap_list: str
+        path to a text file contianing 2 images per line, which are expected to be overlapping. This limits matching to the pairs in the list only. Very useful for SkySat triplet
+    overlap_limit: int
+        if images are taken in sequence, the parameter(m) supplied here will only perform matching for an image with its (m) forward neighbours. Very useful for SkySat video
+    initial_transform: str
+        path to text file from where to apply an initial transform supplied as a 4*4 matrix (such as those output from ASP pc_align)
+    input_adjustments: str
+        if handling RPC model, this will be path to adjustments from a previous invocation of the program
+    flavor: str
+        flavors of bundle adjustment to chose from. 'general_ba' will prepare arguments for simple 1 round bundle_adjustment. `2_round_gcp_1` will prepare arguments for fully free camera optimazationwhile `2_round_gcp_2` prepares arguments for only shifting the optimized camera set a hole to the median transform from all gcps. This is genrally a part of 2 step process where `2_round_gcp_2` follows a `2_round_gcp_1` invocation.
+    session: str
+        bundle adjustment session, default is nadirpinhole (prefered approach for skysat)
+    gcp_transform: bool
+        tranform using gcp argument, set to true during `2_round_gcp_2`.
+    num_iterations: int
+        number of solver iterations, default at 2000.
+    lon_lat_limit: tuple
+        Clip the match point/gcps to lie only within this limit after optimization (min,max) #TODO
+    elevation_limit: tuple 
+        Clip the match point/gcps to lie only within this (min,max) limit after optimization
     
-    returns: a set of arguments as list to be run using subprocess command.
+    Returns
+    ----------
+    ba_opt: list
+        a list of arguments to be run using subprocess command.
     """
      
     ba_opt = []
@@ -199,17 +257,24 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     """
     orthorectify input image over a given DEM using ASP's mapproject program.
     See mapproject documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/mapproject.html
-    inputs:
-    img: Path to Raw image to be orthorectified
-    outfn: Path to output orthorectified image
-    session: type of input camera model (default: rpc)
-    dem: input DEM over which images will be draped (default: WGS84, orthorectify just over datum)
-    tr: target resolution of orthorectified output image
-    t_srs: target projection of orthorectified output image (default: EPSG:4326)
-    cam: if pinhole session, this will be the path to pinhole camera model
-    ba_prefix: Bundle adjustment output for RPC camera.
-    
-    returns: Nothing, orthorectifies input image
+    Parameters
+    ----------
+    img: str
+        Path to Raw image to be orthorectified
+    outfn: str
+        Path to output orthorectified image
+    session: str
+        type of input camera model (default: rpc)
+    dem: str
+        path to input DEM over which images will be draped (default: WGS84, orthorectify just over datum)
+    tr: float/int
+        target resolution of orthorectified output image
+    t_srs: str 
+        target projection of orthorectified output image (default: EPSG:4326)
+    cam: str 
+        if pinhole session, this will be the path to pinhole camera model
+    ba_prefix: str 
+        Bundle adjustment output for RPC camera.
     """
     map_opt = []
     map_opt.extend(['-t',session])
@@ -228,14 +293,18 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
     """
     mosaic  input image list using ASP's dem_mosaic program.
     See dem_mosaic documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/dem_mosaic.html
-    inputs:
-    img_list: List of input images to be mosaiced
-    outfn: Path to output mosaiced image
-    tr: target resolution of orthorectified output image
-    t_srs: target projection of orthorectified output image (default: EPSG:4326)
-    stats: metric to use for mosaicing
-
-    returns: Nothing, writes out a mosaiced image for the list of input images
+    Parameters
+    ----------
+    img_list: list
+        List of input images to be mosaiced
+    outfn: str
+        Path to output mosaiced image
+    tr: float/int
+        target resolution of orthorectified output image
+    t_srs: str 
+        target projection of orthorectified output image (default: EPSG:4326)
+    stats: str 
+        metric to use for mosaicing
     """
 
     dem_mosaic_opt = []
@@ -254,24 +323,43 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
     """
     prepares stereo cmd for ASP
     See ASP's stereo documentation here: https://stereopipeline.readthedocs.io/en/latest/correlation.html
-    inputs:
-    session: camera model with which stereo steps (preprocessing, triangulation will be performed (default: rpc)
-    threads: number of threads to use for each stereo job (default: 4)
-    ba_prefix: if rpc, read adjustment to rpc files from this path
-    align: alignment method to be used befor correlation (default: Affineepipolar). Note will only be relevant if non-ortho images are used for correlation
-    xcorr: Whether to perform cross-check (forward+backward search during stereo), default is 2, so check for disparity first from left to right and then from right to left
-    std_mask: this does not perform what is expected, so omitted now
-    std_kernel: omitted for now
-    lv: number of pyramidal overview levels for stereo correlation, defualt is 5 levels
-    corr_kernel: tempelate window size for stereo correlation (default is [21,21])
-    rfne_kernel: tempelate window size for sub-pixel optimization (default is [35,35])
-    stereo_mode: 0 for block matching, 1 for SGM, 2 for MGM (default is 0)
-    spm: subpixel mode, 0 for parabolic localisation, 1 for adaptavie affine and 2 for simple affine (default is 1)
-    cost_mode: Cost function to determine match scores, depends on stereo_mode, defualt is 2 (Normalised cross correlation) for block matching
-    corr_tile_size: tile sizes for stereo correlation, default is ASP default size of 1024, for SGM/MGM this is changed to 6400 for skysat
-    mvs: prepare arguments for experimental multiview video stereo
+    Parameters
+    ----------
+    session: str
+        camera model with which stereo steps (preprocessing, triangulation will be performed (default: rpc)
+    threads: int
+        number of threads to use for each stereo job (default: 4)
+    ba_prefix: str
+        if rpc, read adjustment to rpc files from this path
+    align: str 
+        alignment method to be used befor correlation (default: Affineepipolar). Note will only be relevant if non-ortho images are used for correlation
+    xcorr: int 
+        Whether to perform cross-check (forward+backward search during stereo), default is 2, so check for disparity first from left to right and then from right to left
+    std_mask: int
+        this does not perform what is expected, so omitted now
+    std_kernel: int 
+        omitted for now
+    lv: int
+        number of pyramidal overview levels for stereo correlation, defualt is 5 levels
+    corr_kernel: list
+        tempelate window size for stereo correlation (default is [21,21])
+    rfne_kernel: list
+        tempelate window size for sub-pixel optimization (default is [35,35])
+    stereo_mode: int
+        0 for block matching, 1 for SGM, 2 for MGM (default is 0)
+    spm: int
+        subpixel mode, 0 for parabolic localisation, 1 for adaptavie affine and 2 for simple affine (default is 1)
+    cost_mode: int
+        Cost function to determine match scores, depends on stereo_mode, defualt is 2 (Normalised cross correlation) for block matching
+    corr_tile_size: int
+        tile sizes for stereo correlation, default is ASP default size of 1024, for SGM/MGM this is changed to 6400 for skysat
+    mvs: bool
+        if true, prepare arguments for experimental multiview video stereo
 
-    returns: a set of stereo arguments as list to be run using subprocess command.
+    Returns
+    ----------
+    stereo_opt: list
+        a set of stereo arguments as list to be run using subprocess command.
     """
     stereo_opt = []
     # session_args
@@ -322,11 +410,17 @@ def convergence_angle(az1, el1, az2, el2):
     """
     function to calculate convergence angle between two satellites 
     # Credits: from David's dgtools
-    inputs:
-    az1,el1: azimuth and elevation as arrays/list/single_number (in degrees for satellite 1)
-    az2,el2: azimuth and elevation as arrays/list/single_number (in degrees for satellite 2)
+    Parameters
+    ----------
+    az1,el1: np.array/list/int/float
+        azimuth and elevation as arrays/list/single_number (in degrees for satellite 1)
+    az2,el2: np.array/list/int/float
+        azimuth and elevation as arrays/list/single_number (in degrees for satellite 2)
 
-    returns: convergence angle in degrees
+    Returns
+    ----------
+    conv_angle: np.array/list/int/float
+        convergence angle in degrees
     """
     conv_ang = np.rad2deg(np.arccos(np.sin(np.deg2rad(el1)) * np.sin(np.deg2rad(el2)) + np.cos(np.deg2rad(el1)) * np.cos(np.deg2rad(el2)) * np.cos(np.deg2rad(az1 - az2))))
     return conv_ang
@@ -335,14 +429,23 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
     """
     prepares ASP pc_align ICP cmd
     See pc_align documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
-    inputs:
-    outprefix: prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
-    max_displacement: Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
-    align: ICP's alignment algorithm to use. default: point-to-plane 
-    source: if True, this tells the the algorithm to align the source to reference DEM/PC. If false, this tells the program to align reference to source and save inverse transformation. default: True
-    trans_only: if True, this instructs the program to compute translation only when point cloud optimization. Default: False
+    Parameters
+    ----------
+    outprefix: str
+        prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
+    max_displacement: float/int 
+        Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
+    align: str 
+        ICP's alignment algorithm to use. default: point-to-plane 
+    source: bool 
+        if True, this tells the the algorithm to align the source to reference DEM/PC. If false, this tells the program to align reference to source and save inverse transformation. default: True
+    trans_only: bool 
+        if True, this instructs the program to compute translation only when point cloud optimization. Default: False
     
-    returns: list of pc_align parameteres
+    Returns
+    ----------
+    pc_align_opt: list
+        list of pc_align parameteres
     """
    
     pc_align_opts = []
@@ -357,14 +460,21 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
         pc_align_opts.extend(['--compute-translation-only'])
     pc_align_opts.extend(['-o', outprefix])
     return pc_align_opts
+
 def get_point2dem_opts(tr, tsrs):
     """
     prepares argument for ASP's point cloud gridding algorithm (point2dem) cmd
-    inputs:
-    tr: target resolution of output DEM
-    tsrs: projection of output DEM 
+    Parameters
+    ----------
+    tr: float/int
+        target resolution of output DEM
+    tsrs: str
+        projection of output DEM 
     
-    returns: list of point2dem parameteres
+    Returns
+    ----------
+    point2dem_opts: list
+        list of point2dem parameteres
     """
 
     point2dem_opts = []
@@ -375,9 +485,16 @@ def get_point2dem_opts(tr, tsrs):
 
 def get_total_shift(pc_align_log):
     """
-    returns total shift by pc_align 
-    input: pc_align_log: log file written by ASP pc_align run
-    returns: float value of applied displacement
+    returns total shift by pc_align
+    Parameters
+    ----------
+    pc_align_log: str 
+        path to log file written by ASP pc_align run
+    
+    Returns
+    ----------
+    total_shift: float 
+        value of applied displacement
     """
     with open(pc_align_log, 'r') as f:
         content = f.readlines()
@@ -390,17 +507,20 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
     """
     This function implements the full DEM alignment workflow using ASP's pc_align and point2dem programs
     See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html 
-    inputs:
-    ref_dem: reference DEM for alignment
-    source_dem: source DEM to be aligned
-    max_displacement: Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
-    outprefix: prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
-    max_displacement: Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
-    align: ICP's alignment algorithm to use. default: point-to-plane
-    trans_only: if True, this instructs the program to compute translation only when point cloud optimization. Default: False
-    
-    output:
-    nothing, aligns and regrids aligned pointcloud
+    Parameters
+    ----------
+    ref_dem: str
+        path to reference DEM for alignment
+    source_dem: str
+        path to source DEM to be aligned
+    max_displacement: float 
+        Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
+    outprefix: str 
+        prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
+    align: str
+        ICP's alignment algorithm to use. default: point-to-plane
+    trans_only: bool
+        if True, this instructs the program to compute translation only when point cloud optimization. Default: False
     """
     # this block checks wheter reference DEM is finer resolution or source DEM
     # if reference DEM is finer resolution, then source is aligned to reference
@@ -454,12 +574,20 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
     generates cmd for ASP cam2rpc
     This generates rpc camera models from the optimized frame camera models
     See documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/cam2rpc.html
-    inputs:
-    t: session, or for here, type of input camera, default: pinhole 
-    dem: DEM which will be used for calculating RPC polynomials
-    gsd: Expected ground-samplind distance
-    num_samples: Sampling for RPC approximation calculation (default=50)
-    returns: generates a list of arguments for cam2rpc call.
+    Parameters
+    ----------
+    t: str
+        session, or for here, type of input camera, default: pinhole 
+    dem: str
+        path to DEM which will be used for calculating RPC polynomials
+    gsd: float 
+        Expected ground-samplind distance
+    num_samples: int 
+        Sampling for RPC approximation calculation (default=50)
+    Returns
+    ----------
+    cam2rpc_opts: list
+        A list of arguments for cam2rpc call.
     """
  
     cam2rpc_opts = []
