@@ -26,3 +26,15 @@ def skysat_footprint(img_fn,incrs=None):
         footprint_shp = footprint_shp.to_crs(incrs)
     return footprint_shp
 
+def parse_frame_index(frame_index,df_only=False):
+    df = pd.read_csv(frame_index)
+    geo_crs = {'init':'epsg:4326'}
+    df_rec = df.copy()
+    df_rec['geom'] = df_rec['geom'].apply(fix_polygon_wkt)
+    gdf = gpd.GeoDataFrame(df_rec,geometry='geom',crs=geo_crs)
+    if df_only:
+        out = df
+    else:
+        out = gdf
+    return out
+
