@@ -606,4 +606,50 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
     cam2rpc_opts.extend(['--session', t])
     cam2rpc_opts.extend(['--num-samples', str(num_samples)])
     return cam2rpc_opts
+
+def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=False, dem=None, gsd=None, img=False):
+    """
+    Align tsai cameras based on pc_align transformation matrix
     
+    Parameters
+    ----------
+    pinhole_tsai: str
+        Path to pinhole tsai camera
+    transform: str
+        Path to pc_align transformation matrix text file
+    outfolder: str
+        Path to output folder where aligned cameras will be written
+    write: bool
+        True, if want to write out aligned cameras, False if not
+    rpc: bool
+        True if want to compute RPC from the aligned camera models
+    dem: str
+        Path to DEM to be used is computing RPC camera models
+    gsd: float
+        Output ground sampling distance to be written to RPC information
+    img: str
+        Path to image file for which RPC is being written, this is used in computing image dimension while RPC computation
+    
+    Returns
+    ----------
+    out: list
+        2 element list containing adjusted camera center and rotation matrix
+    """
+    tsai_dict = read_tsai_dict(pinhole_tsai)
+    cam_cen = np.array(tsai_dict['cam_cen_ecef'])
+    cam_rotation = np.reshape(np.array(tsai_dict['rotation_matrix']), (3, 3))
+    pc_align_trans, pc_align_rot = read_pc_align_transform(transform)
+    cam_cen_adj = np.matmul(pc_align_rot, cam_cen) + pc_align_trans
+    cam_rotation_adj = np.matmul(pc_align_rot, cam_rotation)
+    outfn = os.path.splitext(tsai_dict['camera'])[0] + '_adj_pc_align.tsai'
+    if outfolder:
+        outfn = os.path.join(outfolder, outfn)
+    if write:
+        make_tsai(outfn,tsai_dict['optical_center'][0],tsai_dict['optical_center'][1],tsai_dict['focal_length'][0],tsai_dict['focal_length'][1],cam_rotation_adj,cam_cen_adj,tsai_dict['pitch'])
+    if rpc:
+        cam2rpc_opts = get_cam2rpc_opts(t='pinhole', dem=dem, gsd=gsd, num_samples=50)
+        rpc_xml = os.path.splitext(outfn)[0] + '_rpc_asp.xml'
+        cam2rpc_args = [img, outfn, rpc_xml]
+        run_cmd('cam2rpc', cam2rpc_opts + cam2rpc_args)
+    out = [cam_cen_adj, cam_rotation_adj]
+    return out   
