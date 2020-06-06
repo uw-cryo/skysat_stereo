@@ -3,7 +3,7 @@
 from pygeotools.lib import geolib,iolib
 from shapely.geometry import Polygon, point
 import geopandas as gpd
-from skysat_stereo.lib import asp_utils
+from skysat_stereo import asp_utils
 
 
 def skysat_footprint(img_fn,incrs=None):
@@ -464,7 +464,7 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
     return job_list
 
 def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,dem=None,texture='high',outfol=None,block=0):
-    ""
+    """
     Builds subprocess job list for triplet collection pairwise implementation
     
     Parameters
