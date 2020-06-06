@@ -3,9 +3,24 @@
 from pygeotools.lib import geolib,iolib
 from shapely.geometry import Polygon, point
 import geopandas as gpd
+from skysat_stereo.lib import asp_utils
 
 
 def skysat_footprint(img_fn,incrs=None):
+    """
+    Define ground corner footprint from RPC model
+    Parameters
+    ----------
+    img_fn: str
+        path to image with embedded RPC info in tiff tag
+    incrs: dict
+        crs to convert the final footprint into, by default the footprint is returned in geographic coordinates (EPSG:4326)
+    Returns
+    ----------
+    footprint_shp: geopandas geodataframe
+        geodataframe containg ground footprints in specified incrs
+    """
+    
     if os.path.islink(img_fn):
         img_ds = iolib.fn_getds(os.readlink(img_fn))
     else:
@@ -18,7 +33,7 @@ def skysat_footprint(img_fn,incrs=None):
     img_x = [0,nx,nx,0]
     img_y = [0,0,ny,ny]   
     img_z = [z,z,z,z] #should ideally accept a common height above datum, read from rpc #done
-    mx,my = rpc2map(img_fn,img_x,img_y,img_z)
+    mx,my = asp_utils.rpc2map(img_fn,img_x,img_y,img_z)
     coord_list = list(zip(mx,my))
     footprint_poly = Polygon(coord_list)
     footprint_shp = gpd.GeoDataFrame(index=[0],geometry=[footprint_poly],crs=geo_crs)
