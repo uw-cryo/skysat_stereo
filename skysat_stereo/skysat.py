@@ -42,6 +42,19 @@ def skysat_footprint(img_fn,incrs=None):
     return footprint_shp
 
 def parse_frame_index(frame_index,df_only=False):
+    """
+    Parse L1A frame_index.csv as a geodataframe/dataframe
+    Parameters
+    ----------
+    frame_index: str
+        Path to frame_index.csv file
+    df_only: bool
+        if True, the the function returns a dataframe, else, it returns a geodataframe
+    Returns
+    ----------
+    out: GeoPandas GeoDataframe/ Pandas Dataframe
+        output type depends on input to df_only argument
+    """
     df = pd.read_csv(frame_index)
     geo_crs = {'init':'epsg:4326'}
     df_rec = df.copy()
@@ -52,4 +65,574 @@ def parse_frame_index(frame_index,df_only=False):
     else:
         out = gdf
     return out
+
+def fix_polygon_wkt(string):
+    # from Scott Henderson's notebook
+    """
+    returns shapely geometry from reformatted WKT
+    Parameters
+    ----------
+    string: str
+        wkt string to be formatted
+    Returns
+    ----------
+    out: str
+        fixed wkt string
+    """
+    pre = string[:-2]
+    first_point = string.split(',')[0].split('(')[-1]
+    fixed = f'{pre},{first_point}))'
+    return wkt.loads(fixed)
+
+def copy_rpc(in_img,out_img):
+    """
+    Copy rpc info from 1 image to target image
+    Parameters
+    ----------
+    in_img: str
+        Path to input image from which RPC will be copied
+    out_img: str
+        Path to output image to which RPC will be copied
+    """
+    rpc_fn = in_img
+    non_rpc_fn = out_img
+    rpc_img = gdal.Open(rpc_fn, gdalconst.GA_ReadOnly)
+    non_rpc_img = gdal.Open(non_rpc_fn, gdalconst.GA_Update)
+    rpc_data = rpc_img.GetMetadata('RPC')
+    non_rpc_img.SetMetadata(rpc_data,'RPC')
+    print(f"Copying rpc from {in_img} to {out_img}")
+    del(rpc_img)
+    del(non_rpc_img)
+
+def crop_sim_res_extent(img_list, outfol, vrt=False,rpc=False):
+    """
+    Warp images to common 'finest' resolution and intersecting extent
+    This is useful for stereo processing with mapprojected imagery with the skysat pairs
+
+    Parameters
+    ----------
+    img_list: list
+        list containing two images
+    outfol: str
+        path to folder where warped images will be saved
+    vrt: bool
+        Produce warped VRT instead of geotiffs if True
+    rpc: bool
+        Copy RPC information to warped images if True
+    Returns
+    ----------
+    out: list
+        list containing the two warped images, first entry (left image) is the image which was of finer resolution (more nadir) initially
+        If the images do not intersect, two None objects are returned in the list
+    """
+    resample_alg = 'lanczos'
+    img1 = img_list[0]
+    img2 = img_list[1]
+    img1_ds = iolib.fn_getds(img1)
+    img2_ds = iolib.fn_getds(img2)
+    res1 = geolib.get_res(img1_ds, square=True)[0]
+    res2 = geolib.get_res(img2_ds, square=True)[0]
+    # set left image as higher resolution, this is repeated for video, but
+    # good for triplet with no gsd information
+    if res1 < res2:
+        l_img = img1
+        r_img = img2
+        res = res1
+    else:
+        l_img = img2
+        r_img = img1
+        res = res2
+    # ASP stereo command expects the input to be .tif/.tiff, complains for .vrt
+    # Try to save with vrt driver but a tif extension ?
+    l_img_warp = os.path.join(outfol, os.path.splitext(os.path.basename(l_img))[0] + '_warp.tif')
+    r_img_warp = os.path.join(outfol, os.path.splitext(os.path.basename(r_img))[0] + '_warp.tif')
+    if not (os.path.exists(l_img_warp)):
+        # can turn on verbose during qa/qc
+        # Better to turn off during large runs, writing takes time
+        verbose = False
+        if not os.path.exists(outfol):
+            os.makedirs(outfol)
+        try:
+            this will simply break and continue if the images do not intersect
+            ds_list = warplib.memwarp_multi_fn([l_img,r_img], r=resample_alg, verbose=verbose, res='min', extent = 'intersection')
+            if vrt:
+                extent = geolib.ds_extent(ds_list[0])
+                res = geolib.get_res(ds_list[0], square=True)
+                vrt_options = gdal.BuildVRTOptions(resampleAlg='average',resolution='user',xRes=res[0],yRes=res[1],outputBounds=tuple(extent))
+                l_vrt = gdal.BuildVRT(l_img_warp, [l_img, ], options=vrt_options)
+                r_vrt = gdal.BuildVRT(r_img_warp, [r_img, ], options=vrt_options)
+                # close vrt to save to disk
+                l_vrt = None
+                r_vrt = None
+                out = [l_img_warp, r_img_warp]
+            else:
+                # I am opting out of writing out vrt, to prevent correlation
+                # artifacts. GeoTiffs will be written out in the meantime
+                l_img_ma = iolib.ds_getma(ds_list[0])
+                r_img_ma = iolib.ds_getma(ds_list[1])
+                iolib.writeGTiff(l_img_ma, l_img_warp, ds_list[0])
+                iolib.writeGTiff(r_img_ma, r_img_warp, ds_list[1])
+                out = [l_img_warp, r_img_warp]
+                del(ds_list)
+                if rpc:
+                    copy_rpc(l_img,l_img_warp)
+                    copy_rpc(r_img,r_img_warp)
+        except BaseException:
+            out = None
+    else:
+        out = [l_img_warp, r_img_warp]
+    return out
+
+def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interval=None,texture=None,crop_map=False,outfol=None,frame_index=None,block=0):
+    """
+    Builds subprocess job list for video collection multiview implementation (explained below) adapted from dAngelo 2016
+    - this is mvs implementation
+    - each input master view will be jointly triangulated with the next 20 views
+    - Sampling interval will be used to select master views
+    # Note: ASP's mutliview only supports homography alignment. This will likely fail over steep terrain  given the small skysat footprint. 
+    Therefore I prefer to use Mapprojected images with alignment=None option ! and results have only been evaluated for mapprojected images
+    
+    Parameters
+    ----------
+    img_folder: str
+        Path to image folder
+    t: str
+        Session to use for stereo processing
+    cam_fol: str
+        Folder containing tsai camera models (None if using RPC models or using bundle adjusted tsai cameras)
+    ba_prefix: str
+        ba_prefix for locating the refined tsai camera models, or for locating the *.adjust files for RPC bundle adjusted cameras
+    dem: str
+        Path to DEM used for mapprojection
+    sampling_interval: int
+        Number of equally spaced master views to be selected
+    texture: str
+        use option 'low' input image texture is low, 'normal' for normal textured images. This is used for determining the correlation and refinement kernel
+    crop_map: bool
+        crop images to map extent if True. Should always be False for video dataset
+    outfol: str
+        Path to master output folder where the stereo results will be saved
+    frame_index: Geopandas GeoDataframe or Pandas Dataframe
+        dataframe/geodataframe formed from the truncated frame_index.csv written by skysat_preprocess.py. Will be used in determining images to be processed
+    block: int
+        Select 0 for the defualt MGM matching, 1 for block matching
+    
+    Returns
+    ----------
+    job_list: list
+        list of stereo jobs build on the given parameters
+    """
+    job_list = []
+    img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tif'))[0] for frame in frame_index.name.values] # read images
+    # Read Cameras
+    if ba_prefix:
+        cam_list = [glob.glob(ba_prefix + '-' + frame + '*.tsai')[0] for frame in frame_index.name.values]
+    else:
+        cam_list = [glob.glob(os.path.join(cam_fol, frame + '*.tsai'))[0] for frame in frame_index.name.values]
+    num_pairs = 20 # can be accepted as input
+    # Compute equally spaced indices for the master images to be chosen 
+    master_idx = np.linspace(0,len(img_list)-1-num_pairs,sampling_interval,dtype=np.int)
+    slave_idexs = [list(np.arange(idx+1,idx+1+num_pairs)) for idx in master_idx] #this is list of list containing slave_ids for corresponding master_id
+    if os.path.islink(img_list[0]):
+        symlink = True
+    else:
+        symlink = False
+    # This loop prepares the jobs
+    for i in tqdm(range(0, len(master_idx))):
+        total_images = len(img_list)
+        if symlink:
+            master_image = os.path.islink(img_list[master_idx[i]])
+            slave_images = [os.path.islink(img_list[slave_idexs[i][k]]) for k in range(len(slave_idexs[i]))]
+        else:
+            master_image = img_list[master_idx[i]]
+            slave_images = [img_list[slave_idexs[i][k]] for k in range(len(slave_idexs[i]))]
+        master_camera = cam_list[master_idx[i]]
+        slave_cameras = [cam_list[slave_idexs[i][k]] for k in range(len(slave_idexs[i]))]
+        print(f'Number of slave images: {len(slave_images)}')
+        master_prefix = os.path.splitext(os.path.basename(master_image))[0]
+        outstr = master_prefix + '_mvs'
+        outfolder = os.path.join(outfol, outstr)
+        slave_prefixes = [os.path.splitext(os.path.basename(x))[0] for x in slave_images]
+        if 'map' in master_prefix:
+            master_prefix = master_prefix.split('_map', 15)[0]
+            slave_prefixes = [x.split('_map', 15)[0] for x in slave_prefixes]
+        ba = None
+        stereo_args = [master_image] + slave_images + [master_camera] + slave_cameras
+        if block == 1:
+            spm = 2
+            stereo_mode = 0
+            corr_tile_size = 1024
+            if texture == 'low':
+                rfne_kernel = [21, 21]
+                corr_kernel = [35, 35]
+                lv = 5
+            else:
+                rfne_kernel = [15, 15]
+                corr_kernel = [21, 21]
+                lv = 5
+        else:
+            spm = 2
+            stereo_mode = 2
+            corr_tile_size = 6400
+            if texture == 'low':
+                rfne_kernel = [21, 21]
+                corr_kernel = [9, 9]
+                lv = 5
+            else:
+                rfne_kernel = [15, 15]
+                corr_kernel = [7, 7]
+                lv = 5
+        stereo_opt = asp_utils.get_stereo_opts(session=t,align='None',lv=lv,corr_kernel=corr_kernel,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=4,corr_tile_size=corr_tile_size,mvs=True)
+        outfolder = outfolder + '/run'
+        print(outfolder)
+        stereo_args = stereo_args + [outfolder]
+        if 'map' in t:
+            stereo_args = stereo_args + [dem]
+        job_list.append(stereo_opt + stereo_args)
+    return job_list
+
+def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interval=None,texture=None,crop_map=False,outfol=None,frame_index=None,block=0,full_extent=False):
+    """
+    Builds subprocess job list for video collection pairwise implementation
+
+    Parameters
+    ----------
+    img_folder: str
+        Path to image folder
+    t: str
+        Session to use for stereo processing
+    cam_fol: str
+        Folder containing tsai camera models (None if using RPC models or using bundle adjusted tsai cameras)
+    ba_prefix: str
+        ba_prefix for locating the refined tsai camera models, or for locating the *.adjust files for RPC bundle adjusted cameras
+    dem: str
+        Path to DEM used for mapprojection
+    sampling_interval: int
+        interval at which source images will be chosen for sequential reference images in the list
+    texture: str
+        use option 'low' input image texture is low, 'normal' for normal textured images. This is used for determining the correlation and refinement kernel
+    crop_map: bool
+        crop images to map extent if True. Cropping to common resolution and extent should give best results in mapprojected images
+    outfol: str
+        Path to master output folder where the stereo results will be saved
+    frame_index: Geopandas GeoDataframe or Pandas Dataframe
+        dataframe/geodataframe formed from the truncated frame_index.csv written by skysat_preprocess.py. Will be used in determining images to be processed
+    block: int
+        Select 0 for the defualt MGM matching, 1 for block matching
+    full_extent: bool
+        If True, stereo pairs with smaller baselines (sampling interval of 5) will be padded at the beginning and end of the video sequence
+
+    Returns
+    ----------
+    job_list: list
+        list of stereo jobs build on the given parameters
+    """
+
+     #check here if the sampling is greater than 10 seconds
+     # if this is the case, then output DEM is not going to capture the full extent of the video
+     # so after initial pairing at user defined rates, append to list pairs at this range at the starting and end.
+     # check the interval first
+    try:
+        img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tiff'))[0] for frame in frame_index.name.values]
+    except:
+        img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tif'))[0] for frame in frame_index.name.values]
+    if ba_prefix:
+        cam_list = [glob.glob(ba_prefix + '-' + frame + '*.tsai')[0] for frame in frame_index.name.values]
+    else:
+        cam_list = [glob.glob(os.path.join(cam_fol, frame + '*.tsai'))[0] for frame in frame_index.name.values]
+    print(f"Sampling interval is {sampling_interval}")
+    #find min baseline between first and next in seconds
+    dt_list = [datetime.strptime(date.split('+00:00')[0],'%Y-%m-%dT%H:%M:%S.%f') for date in frame_index.datetime.values]
+    min_sec = (dt_list[sampling_interval]-dt_list[0]).total_seconds() #this is interval between 1 and next stereo pair image
+    succesive_sec = (dt_list[1]-dt_list[0]).total_seconds() #this is interval between 2 images in the sequence
+
+    end_point = len(img_list)-1-sampling_interval
+    master_idx = np.linspace(0,end_point,num=end_point+1,dtype=int)
+    slave_idx = master_idx+sampling_interval
+    print(f"seleceted {len(slave_idx)} stereo pairs by default")
+    # if the sampling interval causes the image pairs to be formed at higher interval, and full_extent is chosen, then this will be used for padding stereo pairs (See docstring). 
+    if (min_sec > 10) & full_extent:
+        #need to maintain 10 seconds interval minimum
+        #stereo resulst are poor for lower intervals than that
+        secondary_interval = np.int(np.round(10/succesive_sec))
+        print(f"will buffer start and end frames with interval of {secondary_interval}")
+        end_point1 = slave_idx[0]-secondary_interval
+        master_1 = np.linspace(master_idx[0],end_point1,num=end_point1-master_idx[0]+1,dtype=int)
+        slave_1 = master_1+secondary_interval
+        end_point2 = slave_idx[-1]-secondary_interval
+        master_2 = np.linspace(master_idx[-1],end_point2,num=end_point2-master_idx[-1]+1,dtype=int)
+        slave_2 = master_2+secondary_interval
+        master_idx = list(master_idx)+list(master_1)+list(master_2)
+        slave_idx = list(slave_idx)+list(slave_1)+list(slave_2)
+        print(f"added additional {len(slave_1)+len(slave_2)} stereo pairs")
+    job_list = []
+    if os.path.islink(img_list[0]):
+        symlink = True
+    else:
+        symlink = False
+    # Build jobs
+    for i in tqdm(range(0, len(master_idx))):
+        if symlink:
+            in_img_1 = os.readlink(img_list[master_idx])
+            in_img_2 = os.readlink(img_list[slave_idx])
+        else:
+            in_img_1 = img_list[master_idx[i]]
+            in_img_2 = img_list[slave_idx[i]]
+        img1 = os.path.basename(in_img_1)
+        img2 = os.path.basename(in_img_2)
+        pref_1 = os.path.splitext(img1)[0]
+        pref_2 = os.path.splitext(img2)[0]
+        # print(pref_1)
+        if 'map' in t:
+            pref_1 = pref_1.split('_PAN', 15)[0] + '_PAN'
+            pref_2 = pref_2.split('_PAN', 15)[0] + '_PAN'
+        mask1 = frame_index['name'] == pref_1
+        mask2 = frame_index['name'] == pref_2
+        df_img1 = frame_index[mask1]
+        df_img2 = frame_index[mask2]
+        gsd1 = df_img1.gsd.values[0]
+        gsd2 = df_img2.gsd.values[0]
+        cam_1 = cam_list[master_idx[i]]
+        cam_2 = cam_list[slave_idx[i]]
+        # always map stereo disparity with finer resolution image as reference
+        if gsd1 < gsd2:
+            in_img1 = in_img_1
+            in_img2 = in_img_2
+            pref1 = pref_1
+            pref2 = pref_2
+            cam1 = cam_1
+            cam2 = cam_2
+        else:
+            in_img1 = in_img_2
+            in_img2 = in_img_1
+            pref1 = pref_2
+            pref2 = pref_1
+            cam2 = cam_1
+            cam1 = cam_2
+        convergence = np.round(asp_utils.convergence_angle(df_img1.sat_az.values[0],df_img1.sat_elev.values[0],df_img2.sat_az.values[0],df_img2.sat_elev.values[0]),2)
+        outstr = f'{pref1}_{pref2}_{convergence}'
+        outfolder = os.path.join(outfol, outstr)
+        if 'pinhole' in t:
+            if t == 'pinholemappinhole':
+                in_img1, in_img2 = crop_sim_res_extent(
+                    [in_img1, in_img2], outfolder)
+            ba = None
+            outfolder = outfolder + '/run'
+            stereo_args = [in_img1, in_img2, cam1, cam2, outfolder]
+        else:
+            stereo_args = [in_img1, in_img2, outfolder]
+            if ba_prefix:
+                ba = ba_prefix
+            else:
+                ba = None
+        if 'map' in t:
+            align = 'None'
+            stereo_args.append(dem)
+        else:
+            align = 'AffineEpipolar'
+        # add as list ?
+        if block == 1:
+            print("Performing block matching")
+            spm = 2 #Bayes EM
+            stereo_mode = 0 #Block matching
+            cost_mode = 2 #NCC 
+            corr_tile_size = 1024 
+            if texture == 'low':
+                rfne_kernel = [21, 21]
+                corr_kernel = [35, 35]
+                lv = 2
+            else:
+                rfne_kernel = [15, 15]
+                corr_kernel = [21, 21]
+                lv = 5
+        else:
+            cost_mode = 4 #Preffered MGM cost-mode
+            spm = 2 # Bayes EM
+            stereo_mode = 2 #MGM
+            corr_tile_size = 6400
+            if texture == 'low':
+                rfne_kernel = [21, 21]
+                corr_kernel = [9, 9]
+                lv = 2
+            else:
+                rfne_kernel = [15, 15]
+                corr_kernel = [7, 7]
+                lv = 5
+        stereo_opt = asp_utils.get_stereo_opts(session=t,ba_prefix=ba,align=align,lv=lv,corr_kernel=corr_kernel,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
+        print(stereo_opt + stereo_args)
+        job_list.append(stereo_opt + stereo_args)
+    return job_list
+
+def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,dem=None,texture='high',outfol=None,block=0):
+    ""
+    Builds subprocess job list for triplet collection pairwise implementation
+    
+    Parameters
+    ----------
+    overlap_list: str
+        path to pkl file containing the overlap list and overlap percentage
+    t: str
+        Session to use for stereo processing
+    img_list: list 
+        List of paths of input images
+    ba_prefix: str 
+        ba_prefix for locating the refined tsai camera models, or for locating the *.adjust files for RPC bundle adjusted cameras
+    cam_fol: str
+        Folder containing tsai camera models (None if using RPC models or using bundle adjusted tsai cameras
+    dem: str 
+        Path to DEM used for mapprojection
+    sampling_interval: int
+        interval at which source images will be chosen for sequential reference images in the list
+    texture: str
+        use option 'low' input image texture is low, 'normal' for normal textured images. This is used for determining the correlation and refinement kernel
+    crop_map: bool
+        crop images to map extent if True. Cropping to common resolution and extent should give best results in mapprojected images
+    outfol: str 
+        Path to master output folder where the stereo results will be saved
+    frame_index: Geopandas GeoDataframe or Pandas Dataframe
+        dataframe/geodataframe formed from the truncated frame_index.csv written by skysat_preprocess.py. Will be used in determining images to be processed
+    block: int 
+        Select 0 for the defualt MGM matching, 1 for block matching
+
+    Returns
+    ----------
+    job_list: list
+        list of stereo jobs build on the given parameters
+    """
+
+    job_list = []
+    triplet_df = prep_trip_df(overlap_list)
+    df_list = [x for _, x in triplet_df.groupby('identifier_text')]
+    for df in df_list:
+        outfolder = os.path.join(outfol, df.iloc[0]['identifier_text'])
+        img1_list = df.img1.values
+        img2_list = df.img2.values
+        pbar = ProgressBar()
+        print("preparing stereo jobs")
+        for i, process in enumerate(pbar(img1_list)):
+            img1 = img1_list[i]
+            img2 = img2_list[i]
+            IMG1 = os.path.splitext(os.path.basename(img1))[0]
+            IMG2 = os.path.splitext(os.path.basename(img2))[0]
+            out = outfolder + '/' + IMG1 + '__' + IMG2
+            if 'rpc' in t:
+                rpc = True
+            else:
+                rpc = False
+            # https://www.geeksforgeeks.org/python-finding-strings-with-given-substring-in-list/
+            try:
+                img1 = [x for x in img_list if re.search(IMG1, x)][0]
+                img2 = [x for x in img_list if re.search(IMG2, x)][0]
+            except BaseException:
+                continue
+            if 'map' in t:
+                out = out + '_map'
+                try:
+                    in_img1, in_img2 = crop_sim_res_extent([img1, img2], out,rpc=rpc)
+                except BaseException:
+                    continue
+            else:
+                in_img1 = img1
+                in_img2 = img2
+            out = os.path.join(out, 'run')
+            IMG1 = os.path.splitext(os.path.basename(in_img1))[0]
+            IMG2 = os.path.splitext(os.path.basename(in_img2))[0]
+            if 'map' in t:
+                IMG1 = IMG1.split('_map',15)[0]
+                IMG2 = IMG2.split('_map',15)[0]
+            if 'pinhole' in t:
+                if ba_prefix:
+                    cam1 = glob.glob(
+                        os.path.abspath(ba_prefix) + '-' + IMG1 + '*.tsai')[0]
+                    cam2 = glob.glob(
+                        os.path.abspath(ba_prefix) + '-' + IMG2 + '*.tsai')[0]
+                else:
+                    cam1 = glob.glob(os.path.join(os.path.abspath(cam_fol),IMG1 + '*.tsai'))[0]
+                    cam2 = glob.glob(os.path.join(os.path.abspath(cam_fol),IMG2 + '*.tsai'))[0]
+                stereo_args = [in_img1, in_img2, cam1, cam2, out]
+                align = 'AffineEpipolar'
+                ba = None
+            elif 'rpc' in t:
+                stereo_args = [in_img1, in_img2, out]
+                align = 'AffineEpipolar'
+                if ba_prefix:
+                    ba = os.path.abspath(ba_prefix)
+                else:
+                    ba = None
+            if 'map' in t:
+                stereo_args.append(dem)
+                align = 'None'
+            if block == 1:
+                print("Performing block matching")
+                spm = 2
+                stereo_mode = 0
+                cost_mode = 2
+                corr_tile_size = 1024
+                if texture == 'low':
+                    rfne_kernel = [21, 21]
+                    corr_kernel = [35, 35]
+                    lv = 5
+                else:
+                    rfne_kernel = [15, 15]
+                    corr_kernel = [21, 21]
+                    lv = 5
+            else:
+                cost_mode = 4
+                spm = 2
+                stereo_mode = 2
+                corr_tile_size = 6400
+                if texture == 'low':
+                    rfne_kernel = [21, 21]
+                    corr_kernel = [9, 9]
+                    lv = 5
+                else:
+                    rfne_kernel = [15, 15]
+                    corr_kernel = [7, 7]
+                    lv = 5
+            stereo_opt = asp_utils.get_stereo_opts(session=t,ba_prefix=ba,align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
+            job_list.append(stereo_opt + stereo_args)
+    return job_list
+
+def prep_trip_df(overlap_list, true_stereo=True):
+    """
+    Prepare dataframe from input plckle file containing overlapping images with percentages
+    Parameters
+    ----------
+    overlap_list: str
+        Path to pickle file containing overlapping images produced from skysat_overlap_parallel.py
+    true_stereo: bool
+        True means output dataframe has only pairs fromed by scenes from different views
+    Returns
+    ----------
+    df: Pandas Dataframe
+        dataframe cotianing list of plausible overlapping stereo pairs
+    """
+    # check date, if date not equal drop
+    # then check time, if time equal drop
+    # if satellite unequal, drop
+    # then check overlap percent
+    # then make different folders for different time period
+    # to add timestamp/convergence angle filter, as list grows
+    df = pd.read_pickle(overlap_list)
+    sat = os.path.basename(df.iloc[0]['img1']).split('_',15)[2].split('d',15)[0]
+    ccd = os.path.basename(df.iloc[0]['img1']).split('_',15)[2].split('d',15)[1]
+    date = os.path.basename(df.iloc[0]['img1']).split('_', 15)[0]
+    time = os.path.basename(df.iloc[0]['img1']).split('_', 15)[1]
+    df['sat1'] = [os.path.basename(x).split('_', 15)[2].split('d', 15)[0] for x in df.img1.values]
+    df['sat2'] = [os.path.basename(x).split('_', 15)[2].split('d', 15)[0] for x in df.img2.values]
+    df['date1'] = [os.path.basename(x).split('_', 15)[0] for x in df.img1.values]
+    df['date2'] = [os.path.basename(x).split('_', 15)[0] for x in df.img2.values]
+    df['time1'] = [os.path.basename(x).split('_', 15)[1] for x in df.img1.values]
+    df['time2'] = [os.path.basename(x).split('_', 15)[1] for x in df.img2.values]
+    if true_stereo:
+        # returned df has only those pairs which form true stereo
+        df = df[df['date1'] == df['date2']]
+        df = df[df['time1'] != df['time2']]
+        df = df[df['sat1'] == df['sat2']]
+    # filter to overlap percentage of around 5%
+    df['overlap_perc'] = df['overlap_perc'] * 100
+    df = df[(df['overlap_perc'] > 2)]
+    df['identifier_text'] = df['date1'] + '_' + df['time1'] + '_' + df['date2'] + '_' + df['time2']
+    print("Number of pairs over which stereo will be attempted are {}".format(len(df)))
+    return df
 
