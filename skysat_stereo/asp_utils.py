@@ -7,8 +7,39 @@ import geopandas as gpd
 from pyproj import Proj, transform
 from rpcm import rpc_from_geotiff
 
-#TODO: 
-# mapproject and dem_mosaic
+def run_cmd(bin, args, **kw):
+    """
+    wrapper around subprocess function to excute bash commands
+    Parameters
+    ----------
+    bin: str
+        command to be excuted (e.g., stereo or gdalwarp)
+    args: list
+        arguments to the command as a list
+    Retuns
+    ----------
+    out: str
+        log (stdout) as str if the command executed, error message if the command failed
+    """
+    #Note, need to add full executable
+    #from dshean/vmap.py
+    binpath = find_executable(bin)
+    if binpath is None:
+        msg = ("Unable to find executable %s\n"
+        "Install ASP and ensure it is in your PATH env variable\n"
+       "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
+        sys.exit(msg)
+    #binpath = os.path.join('/opt/StereoPipeline/bin/',bin)
+    call = [binpath,]
+    #print(call)
+    call.extend(args)
+    #print(call)
+    #print(' '.join(call))
+    try:
+        out = subprocess.check_output(call,encoding='UTF-8')
+    except OSError as e:
+        out = f"the command {call} failed to run, see corresponding asp log"
+    return out
 
 def read_tsai_dict(tsai):
     """
@@ -152,7 +183,6 @@ def clean_gcp(gcp_list,outdir):
     gcp_df = pd.concat(df_list, ignore_index=True)
     gcp_df[7] = gcp_df.apply(clean_img_in_gcp,axis=1)
     gcp_df[0] = np.arange(len(gcp_df))
-    gcp_df.to_csv(os.path.join(outdir,'clean_gcp.gcp'),sep = ' ',index=False,header=False)
     gcp_df.to_csv(os.path.join(outdir,'clean_gcp.csv'),sep = ' ',index=False)
 
 def rpc2map (img,imgx,imgy,imgz=0):
