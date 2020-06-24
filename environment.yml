@@ -19,10 +19,10 @@ dependencies:
  - pip
  - pip:
   # misc
-  - p_tqdm
-  # geospatial+plotting
-  - "--editable=git+https://github.com/dshean/pygeotools.git#egg=pygeotools"
-  - "--editable=git+https://github.com/dshean/demcoreg.git#egg=demcoreg"
-  - "--editable=git+https://github.com/dshean/imview.git#egg=imview"
-  - "--editable=git+https://github.com/cmla/rpcm.git#egg=rpcm"
-  # review and add bare
+   - p_tqdm
+   # geospatial+plotting
+   - "--editable=git+https://github.com/dshean/pygeotools.git#egg=pygeotools"
+   - "--editable=git+https://github.com/dshean/demcoreg.git#egg=demcoreg"
+   - "--editable=git+https://github.com/dshean/imview.git#egg=imview"
+   - "--editable=git+https://github.com/cmla/rpcm.git#egg=rpcm"
+   # review and add bare
