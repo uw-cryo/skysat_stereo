@@ -1,10 +1,19 @@
 #! /usr/bin/env python
 
-from pygeotools.lib import geolib,iolib
-from shapely.geometry import Polygon, point
+from pygeotools.lib import geolib,iolib,warplib,malib
+from shapely.geometry import Polygon, Point
 import geopandas as gpd
-from skysat_stereo.lib import asp_utils
-
+from skysat_stereo import asp_utils
+import numpy as np
+import pandas as pd
+import gdal
+import os,sys,glob
+from shapely import wkt
+import gdalconst
+from progressbar import ProgressBar
+import re
+from tqdm import tqdm
+from datetime import datetime
 
 def skysat_footprint(img_fn,incrs=None):
     """
@@ -36,6 +45,7 @@ def skysat_footprint(img_fn,incrs=None):
     mx,my = asp_utils.rpc2map(img_fn,img_x,img_y,img_z)
     coord_list = list(zip(mx,my))
     footprint_poly = Polygon(coord_list)
+    geo_crs = {'init':'epsg:4326'}
     footprint_shp = gpd.GeoDataFrame(index=[0],geometry=[footprint_poly],crs=geo_crs)
     if incrs:
         footprint_shp = footprint_shp.to_crs(incrs)
@@ -153,7 +163,7 @@ def crop_sim_res_extent(img_list, outfol, vrt=False,rpc=False):
         if not os.path.exists(outfol):
             os.makedirs(outfol)
         try:
-            this will simply break and continue if the images do not intersect
+            #this will simply break and continue if the images do not intersect
             ds_list = warplib.memwarp_multi_fn([l_img,r_img], r=resample_alg, verbose=verbose, res='min', extent = 'intersection')
             if vrt:
                 extent = geolib.ds_extent(ds_list[0])
@@ -222,6 +232,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
     job_list: list
         list of stereo jobs build on the given parameters
     """
+    # only experimented with frame camera models
     job_list = []
     img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tif'))[0] for frame in frame_index.name.values] # read images
     # Read Cameras
@@ -231,33 +242,33 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
         cam_list = [glob.glob(os.path.join(cam_fol, frame + '*.tsai'))[0] for frame in frame_index.name.values]
     num_pairs = 20 # can be accepted as input
     # Compute equally spaced indices for the master images to be chosen 
-    master_idx = np.linspace(0,len(img_list)-1-num_pairs,sampling_interval,dtype=np.int)
-    slave_idexs = [list(np.arange(idx+1,idx+1+num_pairs)) for idx in master_idx] #this is list of list containing slave_ids for corresponding master_id
+    ref_idx = np.linspace(0,len(img_list)-1-num_pairs,sampling_interval,dtype=np.int)
+    source_idexs = [list(np.arange(idx+1,idx+1+num_pairs)) for idx in ref_idx] #this is list of list containing source_ids for corresponding reference_id
     if os.path.islink(img_list[0]):
         symlink = True
     else:
         symlink = False
     # This loop prepares the jobs
-    for i in tqdm(range(0, len(master_idx))):
+    for i in tqdm(range(0, len(ref_idx))):
         total_images = len(img_list)
         if symlink:
-            master_image = os.path.islink(img_list[master_idx[i]])
-            slave_images = [os.path.islink(img_list[slave_idexs[i][k]]) for k in range(len(slave_idexs[i]))]
+            ref_image = os.path.islink(img_list[ref_idx[i]])
+            source_images = [os.path.islink(img_list[source_idexs[i][k]]) for k in range(len(source_idexs[i]))]
         else:
-            master_image = img_list[master_idx[i]]
-            slave_images = [img_list[slave_idexs[i][k]] for k in range(len(slave_idexs[i]))]
-        master_camera = cam_list[master_idx[i]]
-        slave_cameras = [cam_list[slave_idexs[i][k]] for k in range(len(slave_idexs[i]))]
-        print(f'Number of slave images: {len(slave_images)}')
-        master_prefix = os.path.splitext(os.path.basename(master_image))[0]
-        outstr = master_prefix + '_mvs'
+            ref_image = img_list[ref_idx[i]]
+            source_images = [img_list[source_idexs[i][k]] for k in range(len(source_idexs[i]))]
+        ref_camera = cam_list[ref_idx[i]]
+        source_cameras = [cam_list[source_idexs[i][k]] for k in range(len(source_idexs[i]))]
+        print(f'Number of source images: {len(source_images)}')
+        ref_prefix = os.path.splitext(os.path.basename(ref_image))[0]
+        outstr = ref_prefix + '_mvs'
         outfolder = os.path.join(outfol, outstr)
-        slave_prefixes = [os.path.splitext(os.path.basename(x))[0] for x in slave_images]
-        if 'map' in master_prefix:
-            master_prefix = master_prefix.split('_map', 15)[0]
-            slave_prefixes = [x.split('_map', 15)[0] for x in slave_prefixes]
+        source_prefixes = [os.path.splitext(os.path.basename(x))[0] for x in source_images]
+        if 'map' in ref_prefix:
+            ref_prefix = ref_prefix.split('_map', 15)[0]
+            source_prefixes = [x.split('_map', 15)[0] for x in source_prefixes]
         ba = None
-        stereo_args = [master_image] + slave_images + [master_camera] + slave_cameras
+        stereo_args = [ref_image] + source_images + [ref_camera] + source_cameras
         if block == 1:
             spm = 2
             stereo_mode = 0
@@ -336,10 +347,11 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
         img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tiff'))[0] for frame in frame_index.name.values]
     except:
         img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tif'))[0] for frame in frame_index.name.values]
-    if ba_prefix:
-        cam_list = [glob.glob(ba_prefix + '-' + frame + '*.tsai')[0] for frame in frame_index.name.values]
-    else:
-        cam_list = [glob.glob(os.path.join(cam_fol, frame + '*.tsai'))[0] for frame in frame_index.name.values]
+    if 'pinhole' in t:
+        if ba_prefix:
+            cam_list = [glob.glob(ba_prefix + '-' + frame + '*.tsai')[0] for frame in frame_index.name.values]
+        else:
+            cam_list = [glob.glob(os.path.join(cam_fol, frame + '*.tsai'))[0] for frame in frame_index.name.values]
     print(f"Sampling interval is {sampling_interval}")
     #find min baseline between first and next in seconds
     dt_list = [datetime.strptime(date.split('+00:00')[0],'%Y-%m-%dT%H:%M:%S.%f') for date in frame_index.datetime.values]
@@ -347,37 +359,37 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
     succesive_sec = (dt_list[1]-dt_list[0]).total_seconds() #this is interval between 2 images in the sequence
 
     end_point = len(img_list)-1-sampling_interval
-    master_idx = np.linspace(0,end_point,num=end_point+1,dtype=int)
-    slave_idx = master_idx+sampling_interval
-    print(f"seleceted {len(slave_idx)} stereo pairs by default")
+    ref_idx = np.linspace(0,end_point,num=end_point+1,dtype=int)
+    source_idx = ref_idx+sampling_interval
+    print(f"seleceted {len(source_idx)} stereo pairs by default")
     # if the sampling interval causes the image pairs to be formed at higher interval, and full_extent is chosen, then this will be used for padding stereo pairs (See docstring). 
     if (min_sec > 10) & full_extent:
         #need to maintain 10 seconds interval minimum
         #stereo resulst are poor for lower intervals than that
         secondary_interval = np.int(np.round(10/succesive_sec))
         print(f"will buffer start and end frames with interval of {secondary_interval}")
-        end_point1 = slave_idx[0]-secondary_interval
-        master_1 = np.linspace(master_idx[0],end_point1,num=end_point1-master_idx[0]+1,dtype=int)
-        slave_1 = master_1+secondary_interval
-        end_point2 = slave_idx[-1]-secondary_interval
-        master_2 = np.linspace(master_idx[-1],end_point2,num=end_point2-master_idx[-1]+1,dtype=int)
-        slave_2 = master_2+secondary_interval
-        master_idx = list(master_idx)+list(master_1)+list(master_2)
-        slave_idx = list(slave_idx)+list(slave_1)+list(slave_2)
-        print(f"added additional {len(slave_1)+len(slave_2)} stereo pairs")
+        end_point1 = source_idx[0]-secondary_interval
+        ref_1 = np.linspace(ref_idx[0],end_point1,num=end_point1-ref_idx[0]+1,dtype=int)
+        source_1 = ref_1+secondary_interval
+        end_point2 = source_idx[-1]-secondary_interval
+        ref_2 = np.linspace(ref_idx[-1],end_point2,num=end_point2-ref_idx[-1]+1,dtype=int)
+        source_2 = ref_2+secondary_interval
+        ref_idx = list(ref_idx)+list(ref_1)+list(ref_2)
+        slave_idx = list(source_idx)+list(source_1)+list(source_2)
+        print(f"added additional {len(source_1)+len(source_2)} stereo pairs")
     job_list = []
     if os.path.islink(img_list[0]):
         symlink = True
     else:
         symlink = False
     # Build jobs
-    for i in tqdm(range(0, len(master_idx))):
+    for i in tqdm(range(0, len(ref_idx))):
         if symlink:
-            in_img_1 = os.readlink(img_list[master_idx])
-            in_img_2 = os.readlink(img_list[slave_idx])
+            in_img_1 = os.readlink(img_list[ref_idx])
+            in_img_2 = os.readlink(img_list[source_idx])
         else:
-            in_img_1 = img_list[master_idx[i]]
-            in_img_2 = img_list[slave_idx[i]]
+            in_img_1 = img_list[ref_idx[i]]
+            in_img_2 = img_list[source_idx[i]]
         img1 = os.path.basename(in_img_1)
         img2 = os.path.basename(in_img_2)
         pref_1 = os.path.splitext(img1)[0]
@@ -392,23 +404,26 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
         df_img2 = frame_index[mask2]
         gsd1 = df_img1.gsd.values[0]
         gsd2 = df_img2.gsd.values[0]
-        cam_1 = cam_list[master_idx[i]]
-        cam_2 = cam_list[slave_idx[i]]
+        if 'pinhole' in t:
+            cam_1 = cam_list[ref_idx[i]]
+            cam_2 = cam_list[source_idx[i]]
         # always map stereo disparity with finer resolution image as reference
         if gsd1 < gsd2:
             in_img1 = in_img_1
             in_img2 = in_img_2
             pref1 = pref_1
             pref2 = pref_2
-            cam1 = cam_1
-            cam2 = cam_2
+            if 'pinhole' in t:
+                cam1 = cam_1
+                cam2 = cam_2
         else:
             in_img1 = in_img_2
             in_img2 = in_img_1
             pref1 = pref_2
             pref2 = pref_1
-            cam2 = cam_1
-            cam1 = cam_2
+            if 'pinhole' in t:
+                cam2 = cam_1
+                cam1 = cam_2
         convergence = np.round(asp_utils.convergence_angle(df_img1.sat_az.values[0],df_img1.sat_elev.values[0],df_img2.sat_az.values[0],df_img2.sat_elev.values[0]),2)
         outstr = f'{pref1}_{pref2}_{convergence}'
         outfolder = os.path.join(outfol, outstr)
@@ -464,7 +479,7 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
     return job_list
 
 def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,dem=None,texture='high',outfol=None,block=0):
-    ""
+    """
     Builds subprocess job list for triplet collection pairwise implementation
     
     Parameters
@@ -501,6 +516,9 @@ def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,
     """
 
     job_list = []
+    print(img_list)
+    l_img_list = []
+    r_img_list = []
     triplet_df = prep_trip_df(overlap_list)
     df_list = [x for _, x in triplet_df.groupby('identifier_text')]
     for df in df_list:
@@ -523,6 +541,7 @@ def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,
             try:
                 img1 = [x for x in img_list if re.search(IMG1, x)][0]
                 img2 = [x for x in img_list if re.search(IMG2, x)][0]
+                
             except BaseException:
                 continue
             if 'map' in t:
@@ -589,8 +608,19 @@ def triplet_stereo_job_list(overlap_list,t,img_list,ba_prefix=None,cam_fol=None,
                     rfne_kernel = [15, 15]
                     corr_kernel = [7, 7]
                     lv = 5
+            #write out file for dense matches logic
+            # if mapprojected stereo, then need to update overlap list
+            if 'map' in t:
+            	l_img_list.append(os.path.basename(in_img1).split('_warp.tif',15)[0]+'.tif')
+            	r_img_list.append(os.path.basename(in_img2).split('_warp.tif',15)[0]+'.tif')
+            # Prepare stereo options 
             stereo_opt = asp_utils.get_stereo_opts(session=t,ba_prefix=ba,align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
             job_list.append(stereo_opt + stereo_args)
+    overlap_new = os.path.join(outfol,'overlap_list_as_per_dense_ba.pkl')
+    df_out = pd.DataFrame({'img1':l_img_list,'img2':r_img_list})
+    print(f"Saving modified overlap pkl as per dense match criteria at {overlap_new}")
+    df.to_pickle(overlap_new)
+    #return concatenated job list
     return job_list
 
 def prep_trip_df(overlap_list, true_stereo=True):
@@ -635,4 +665,99 @@ def prep_trip_df(overlap_list, true_stereo=True):
     df['identifier_text'] = df['date1'] + '_' + df['time1'] + '_' + df['date2'] + '_' + df['time2']
     print("Number of pairs over which stereo will be attempted are {}".format(len(df)))
     return df
+
+def frame_intsec(img_list,proj,min_overlap):
+    """
+    Compute overlapping pairs with overlap percentage
+    
+    Parameters
+    ----------
+    img_list: list
+        List containing paths to the two images
+    proj: str
+        proj4 string to transform the frames before computing overlap percentage
+    min_overlap: float
+        minimum overlap percentage to consider (between 0 to 1)
+   
+    Returns
+    ----------
+    valid: bool
+       True if frame intersect as per user defined minimum overlap percentage
+    perc_intsect: float
+       Float value returning percentage of overlap ( ranges from 0: no overlap to 1: full overlap)
+    """
+    
+    #shplist contains shp1,shp2
+    img1 = img_list[0]
+    img2 = img_list[1]
+    shp1 = skysat_footprint(img1,proj)
+    shp2 = skysat_footprint(img2,proj)
+    if shp1.intersects(shp2)[0]:
+        intsect = gpd.overlay(shp1,shp2, how='intersection')
+        area_shp1 = shp1['geometry'].area.values[0]
+        area_shp2 = shp2['geometry'].area.values[0]
+        area_intsect = intsect['geometry'].area.values[0]
+        perc_intsect = area_intsect/area_shp1 #we should be fine here with only 1 as skysat collects are mostly uniform ?
+        if perc_intsect>=min_overlap:
+            valid=True
+        else:
+            valid=False
+    else:
+        valid=False
+        perc_intsect=0.0
+    return valid,perc_intsect
+
+def sort_img_list(img_list):
+    """
+    sort triplet stereo imagery into forward, nadir and aft (in the given order)
+    The function is simple, just uses info in the filename string for now
+    Parameters
+    ----------
+    img_list: list
+        list of triplet stereo images
+    Returns
+    ----------
+    for_img_list: list
+        list containing filenames for forward images 
+    nadir_img_list: list
+        list containing filenames for nadir images
+    aft_img_list: list
+        list containing filenames for aft images
+    for_time: str
+        the single time for all forward viewing images
+    nadir_time: str
+        the single time for all nadir viewing images
+    aft_time: str
+        the single time for all aft viewing images
+    """
+    #list of unique image acquisition time list
+    time_list = sorted(list(np.unique(np.array([os.path.basename(img).split('_',15)[1] for img in img_list]))))
+    for_time = time_list[0]
+    nadir_time = time_list[1]
+    aft_time = time_list[2]
+    #make seperate image list
+    #https://stackoverflow.com/questions/2152898/filtering-a-list-of-strings-based-on-contents
+    for_img_list = [k for k in img_list if for_time in k]
+    nadir_img_list = [k for k in img_list if nadir_time in k]
+    aft_img_list = [k for k in img_list if aft_time in k]
+    return (for_img_list,nadir_img_list,aft_img_list,for_time,nadir_time,aft_time)
+
+def res_sort(img_list):
+    """
+    sort images based on resolution, finest resolution on top
+    Parameters
+    ----------
+    img_list: list
+        list of images to be sorted
+    Returns
+    ----------
+    sorted_img_list: list
+        list of sorted images with finest resolution on top
+    """
+    ds_list = [iolib.fn_getds(img) for img in img_list]
+    res_list = [geolib.get_res(ds,square=True) for ds in ds_list]
+    #https://www.geeksforgeeks.org/python-sort-values-first-list-using-second-list
+    zipped_pairs = zip(res_list, img_list)
+    sorted_img_list = [x for _,x in sorted(zipped_pairs)]
+    return sorted_img_list
 

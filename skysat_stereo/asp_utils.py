@@ -6,6 +6,9 @@ import pandas as pd
 import geopandas as gpd
 from pyproj import Proj, transform
 from rpcm import rpc_from_geotiff
+from distutils.spawn import find_executable
+import subprocess
+import ast
 
 def run_cmd(bin, args, **kw):
     """
@@ -37,7 +40,7 @@ def run_cmd(bin, args, **kw):
     #print(' '.join(call))
     try:
         out = subprocess.check_output(call,encoding='UTF-8')
-    except OSError as e:
+    except:
         out = f"the command {call} failed to run, see corresponding asp log"
     return out
 
@@ -133,6 +136,10 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             path to store frame camera model at
         out_gcp: str
             path to store gcp file
+        Returns
+        ----------
+        out: str
+            cam_gen log output (STDOUT)
         """
         cam_gen_opt = []
         cam_gen_opt.extend(['--focal-length',str(fl)])
@@ -151,7 +158,8 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             cam_gen_opt.extend(['--frame-index',frame_index])
         cam_gen_opt.extend(['--refine-camera'])
         cam_gen_args = [img]
-        run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
+        out = run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
+        return out
 
 def clean_img_in_gcp(row):
         """
@@ -201,7 +209,7 @@ def rpc2map (img,imgx,imgy,imgz=0):
         numpy arrays containing longitudes (mx) and latitudes (my) in geographic (EPSG:4326) coordinates
     """
     rpc = rpc_from_geotiff(img)
-    mx,my = rpc.localization_iterative(imgx,imgy,imgz)
+    mx,my = rpc.localization(imgx,imgy,imgz)
     return mx,my
 
 
@@ -305,6 +313,10 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         if pinhole session, this will be the path to pinhole camera model
     ba_prefix: str 
         Bundle adjustment output for RPC camera.
+    Returns
+    ----------
+    out: str
+        mapproject log
     """
     map_opt = []
     map_opt.extend(['-t',session])
@@ -317,7 +329,8 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         map_args = [dem,img,cam,outfn]
     else:
         map_args = [dem,img,outfn]
-    run_cmd('mapproject',map_opt+map_args,msg='Running mapproject for {}'.format(img))
+    out = run_cmd('mapproject',map_opt+map_args)
+    return out
 
 def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
     """
@@ -335,6 +348,10 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
         target projection of orthorectified output image (default: EPSG:4326)
     stats: str 
         metric to use for mosaicing
+    Returns
+    ----------
+    out: str
+        dem_mosaic log
     """
 
     dem_mosaic_opt = []
@@ -343,11 +360,11 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
         dem_mosaic_opt.extend(['--{}'.format(stats)])
     if (tr is not None) & (ast.literal_eval(tr) is not None):
         dem_mosaic_opt.extend(['--tr', str(tr)])
-    print(type(tr))
     if tsrs:
         dem_mosaic_opt.extend(['--t_srs', tsrs])
     dem_mosaic_args = img_list
-    run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt,msg='Generating compistes for {} with stats {}'.format(outfn,stats))
+    out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
+    return out
 
 def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
     """
@@ -573,7 +590,8 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
     print(f"Aligning clouds via the {align} method")
     
     pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only)
-    run_cmd('pc_align', pc_align_opts + pc_align_args)
+    pc_align_log = run_cmd('pc_align', pc_align_opts + pc_align_args)
+    print(pc_align_log)
     # this try, except block checks for 2 things.
     #- Did the transformed point-cloud got produced ?
     #- was the maximum displacement greater than twice the max_displacement specified by the user ? 
@@ -595,7 +613,8 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         point2dem_opts = get_point2dem_opts(tr, tsrs)
         point2dem_args = [pc]
         print(f"Saving aligned reference DEM at {os.path.splitext(pc)[0]}-DEM.tif")
-        run_cmd('point2dem', point2dem_opts + point2dem_args)
+        p2dem_log = run_cmd('point2dem', point2dem_opts + point2dem_args)
+        print(p2dem_log)
     elif grid == False:
         print("aligned cloud not produced or the total shift applied to cloud is greater than 2 times the max_displacement specified, gridding abandoned")
 
