@@ -4,6 +4,7 @@ from pygeotools.lib import geolib,iolib,warplib,malib
 from shapely.geometry import Polygon, Point
 import geopandas as gpd
 from skysat_stereo import asp_utils
+<<<<<<< HEAD
 import numpy as np
 import pandas as pd
 import gdal
@@ -14,6 +15,9 @@ from progressbar import ProgressBar
 import re
 from tqdm import tqdm
 from datetime import datetime
+=======
+
+>>>>>>> 36840fe97c6ad093d82d7c95aa78ef876081da5b
 
 def skysat_footprint(img_fn,incrs=None):
     """
