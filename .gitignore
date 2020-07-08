@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 #src folder for pip installs
-src/
+./src/
 

@@ -191,6 +191,7 @@ def clean_gcp(gcp_list,outdir):
     gcp_df = pd.concat(df_list, ignore_index=True)
     gcp_df[7] = gcp_df.apply(clean_img_in_gcp,axis=1)
     gcp_df[0] = np.arange(len(gcp_df))
+    gcp_df.to_csv(os.path.join(outdir,'clean_gcp.gcp'),sep = ' ',index=False,header=False)
     gcp_df.to_csv(os.path.join(outdir,'clean_gcp.csv'),sep = ' ',index=False)
 
 def rpc2map (img,imgx,imgy,imgz=0):
