@@ -1,12 +1,12 @@
 # skysat_stereo
-Tools and libraries for Planet SkySat imagery, including camera model refinement, stereo reconstruction, and orthomosaic production
+Tools and libraries for processing Planet SkySat imagery, including camera model refinement, stereo reconstruction, and orthomosaic production
 
 ## Introduction
 Planet operates a constellation of 13 SkySat-C SmallSats, which can acquire very-high-resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand, high-resolution Digital Elevation Models (DEMs) for any point on the Earth's surface, with broad applications for Earth science research. However, the quality of these DEMs is currently limited by the geolocation accuracy of the default SkySat camera models, and few existing photogrammetry tools can process the SkySat images.
 
 ## Purpose
-We developed an automated workflow to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript submitted to ISPRS Journal of Photogrammetry and Remote Sensing in July 2020.
-This repository contains all tools and libraries for this workflow. Currently, the main purpose of the repository is to offer a supplement to the manuscript under review, but this project is under active development. We welcome contributions (information for contributors forthcoming) and preliminary feedback from early visitors (you) :)
+We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript submitted to ISPRS Journal of Photogrammetry and Remote Sensing in July 2020. This repository contains all tools and libraries as a supplement to the manuscript under review.
+This project is under active development and we welcome contributions (information for contributors forthcoming) and preliminary feedback from early visitors (you) :)
 
 ## Contents
 #### [skysat_stereo](/skysat_stereo) - libraries used throughout the processing workflow
@@ -26,14 +26,15 @@ This repository contains all tools and libraries for this workflow. Currently, t
 
 #### [notebooks](/notebooks/) - notebooks used during analysis and figure preparation
 
-## Samples
-### Triplet Stereo
+## Sample products
+### SkySat Triplet Stereo
 ![triplet_product](/docs/img/Figure3.jpg)
-Figure 1: Sample orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019.
+Figure 1: Orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019.
+
 ![triplet_accuracy](/docs/img/Figure4.jpg)
 Figure 2: Relative and absolute accuracy before (using Planet RPCs) and after the `skysat_stereo` correction workflow.
 
-### Video
+### SkySat Video
 ![video_samples](/docs/img/Figure5.jpg)
 Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crater (after `skysat_stereo` correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019.
 
