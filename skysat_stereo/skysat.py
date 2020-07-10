@@ -376,7 +376,7 @@ def prep_video_stereo_jobs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sam
         ref_2 = np.linspace(ref_idx[-1],end_point2,num=end_point2-ref_idx[-1]+1,dtype=int)
         source_2 = ref_2+secondary_interval
         ref_idx = list(ref_idx)+list(ref_1)+list(ref_2)
-        slave_idx = list(source_idx)+list(source_1)+list(source_2)
+        source_idx = list(source_idx)+list(source_1)+list(source_2)
         print(f"added additional {len(source_1)+len(source_2)} stereo pairs")
     job_list = []
     if os.path.islink(img_list[0]):

@@ -10,7 +10,7 @@ This Repository contains the scripts developed for automated stereo processing o
 
 ## Contents
 - [skysat_stereo library](/skysat_stereo) contains several python functions for Ames Stereo Pipeline and specific SkySat processing.
-- [scripts directory](/scripts/) contains the following command line scripts for various steps in SkySat imagery.
+- [scripts directory](/scripts/) contains the following command line scripts for various steps in SkySat processing pipeline.
 1. [skysat_overlap.py](/scripts/skysat_overlap.py) for finding overlapping scenes from the entire triplet stereo collection.
 2. [skysat_preprocess.py](/scripts/skysat_preprocess.py) for sampling/subsetting video scenes and creating frame camera models from input metadata.
 3. [ba_skysat.py](/scripts/ba_skysat.py). Bundle adjustment and camera refinement routine.
@@ -27,7 +27,7 @@ This Repository contains the scripts developed for automated stereo processing o
 ### Triplet Stereo
 ![triplet_product](/docs/img/Figure3.jpg)
 
-Figure 1: Sample orthoimage mosaic and DEM composite generated from a SkySat-C triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is \textsuperscript{\textcopyright}Planet, 2019.
+Figure 1: Sample orthoimage mosaic and DEM composite generated from a SkySat-C triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019.
 
 ![triplet_accuracy](/docs/img/Figure4.jpg)
 
@@ -37,7 +37,7 @@ Figure 2: Measure of relative and absolute accuracy before (using Planet RPC cam
 
 ![video_samples](/docs/img/Figure5.jpg)
 
-Figure 3: Sample products from video collection over Mt. St. Helen's crater (after skysat_stereo correction workflow). These final products were derived from L1A imagery that is \textsuperscript{\textcopyright}Planet, 2019.
+Figure 3: Sample products from video collection over Mt. St. Helen's crater (after skysat_stereo correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019.
 
 ![video_planet_rpc](/docs/img/SF2.jpg)
 

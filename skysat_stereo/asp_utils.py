@@ -657,6 +657,32 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
     cam2rpc_opts.extend(['--num-samples', str(num_samples)])
     return cam2rpc_opts
 
+def read_pc_align_transform(transformation):
+    """
+    Read translation and rotation component from pc_aling 4x4 transformation matrix
+    
+    Parameters
+    ----------
+    transformation: str
+        path to text file containing pc_align output *transform.txt file
+    Returns
+    ----------
+    pc_align_trans: numpy array
+        three element transformation vector (x,y,z)
+    pc_align_rot: numpy array
+        rotation vector in 3x3 shape
+    """
+    with open(transformation, 'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    r11, r12, r13, t1 = ' '.join(content[0].split()).split(' ', 15)
+    r21, r22, r23, t2 = ' '.join(content[1].split()).split(' ', 15)
+    r31, r32, r33, t3 = ' '.join(content[2].split()).split(' ', 15)
+    pc_align_rot = np.reshape(np.array(
+        [np.float(x) for x in [r11, r12, r13, r21, r22, r23, r31, r32, r33]]), (3, 3))
+    pc_align_trans = np.array([np.float(x) for x in [t1, t2, t3]])
+    return pc_align_trans, pc_align_rot
+
 def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=False, dem=None, gsd=None, img=False):
     """
     Align tsai cameras based on pc_align transformation matrix

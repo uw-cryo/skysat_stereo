@@ -17,7 +17,7 @@ def get_parser():
         parser.add_argument('-mode', help='operation mode', choices=mode_choice, required=True)
         # gridding only choices
         parser.add_argument('-tr', default=2, type=float, help='DEM gridding resolution (default: %(default)s)')
-        parser.add_argument('-tsrs', default='EPSG:325610', help='Projection for gridded DEM (default: %(default)s)')
+        parser.add_argument('-tsrs', default='EPSG:32610', help='Projection for gridded DEM (default: %(default)s)')
         parser.add_argument('-point_cloud_list', nargs='*', help='List of pointclouds for gridding')
         # classic dem align options, also carried forward to multi_align
         align_choice = ['point-to-point', 'point-to-plane']
