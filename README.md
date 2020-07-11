@@ -29,14 +29,14 @@ This project is under active development and we welcome contributions (informati
 ## Sample products
 ### SkySat Triplet Stereo
 ![triplet_product](/docs/img/Figure3.jpg)
-Figure 1: Orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019.
+Figure 1: Orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019 (Planet Team, 2017).
 
 ![triplet_accuracy](/docs/img/Figure4.jpg)
 Figure 2: Relative and absolute accuracy before (using Planet RPCs) and after the `skysat_stereo` correction workflow.
 
 ### SkySat Video
 ![video_samples](/docs/img/Figure5.jpg)
-Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crater (after `skysat_stereo` correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019.
+Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crater (after `skysat_stereo` correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019 (Planet Team, 2017).
 
 ## Dependencies
 - See [environment.yml file](/environment.yml) for complete list of Python packages with pinned version numbers.
@@ -61,3 +61,6 @@ Accompanying manuscript is under review, and will be available via open access a
 ## Funding and Acknowledgments
 * This research was supported by the NASA Terrestrial Hydrology Program (THP) and the NASA Cryosphere Program. Shashank Bhushan was supported by a NASA FINESST award (80NSSC19K1338) and the NASA HiMAT project (NNX16AQ88G). David Shean, Oleg Alexandrov and Scott Henderson were supported by NASA THP award 80NSSC18K1405. SkySat tasking, data access, and supplemental support was provided under the [NASA Commercial Smallsat Data Acquisition Program 2018 Pilot Study](https://sit.earthdata.nasa.gov/about/small-satellite-commercial-data-buy-program)
 * We acknowledge Compton J. Tucker and others at NASA Goddard Space Flight Center and NASA Headquarters for coordinating the Commercial Satellite Data Access Program Pilot and assisting with prelimnary SkySat tasking campaigns. Paris Good at Planet provided invaluable assistance with data acquisition and facilitated discussions with Planet engineering teams. Thanks are also due to Ross Losher, Antonio Martos, Kelsey Jordahl and others at Planet for initial guidance on SkySat-C sensor specifications and camera models. Resources supporting this work were provided by the NASA High-End Computing (HEC) Program through the NASA Advanced Supercomputing (NAS) Division at Ames Research Center. Friedrich Knuth and Michelle Hu provided feedback on initial manuscript outline, code development and documentation. We also acknowledge input from the larger ASP community during photogrammetry discussions.
+
+## Refrences
+Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
