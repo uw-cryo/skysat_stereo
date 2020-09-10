@@ -20,7 +20,8 @@ import pandas as pd
 def run_cmd(bin, args, **kw):
     # Note, need to add full executable
     # from dshean/vmap.py
-    binpath = find_executable(bin)
+    binpath = os.path.join('/home/sbhushan/src/StereoPipeline/bin',bin)
+    #binpath = find_executable(bin)
     if binpath is None:
         msg = ("Unable to find executable %s\n"
         "Install ASP and ensure it is in your PATH env variable\n"
@@ -167,10 +168,10 @@ def main():
         delta = (df.dt.values[1]-df.dt.values[0])/np.timedelta64(1, 's')
         # i hardocde overlap limit to have 40 seconds coverage
         overlap_limit = np.int(np.ceil(40/delta))
-        print(f"Calculated overlap limit as {overlap_limit}")
-        img_list = [glob.glob(os.path.join(img,f'*{x}*.tiff'))[0] for x in df.name.values]
-        cam_list = [glob.glob(os.path.join(cam,f'*{x}*.tsai'))[0] for x in df.name.values]
-        gcp_list = [glob.glob(os.path.join(gcp,f'*{x}*.gcp'))[0] for x in df.name.values]
+        print("Calculated overlap limit as {}".format(overlap_limit))
+        img_list = [glob.glob(os.path.join(img,'*{}*.tiff'.format(x)))[0] for x in df.name.values]
+        cam_list = [glob.glob(os.path.join(cam,'*{}*.tsai'.format(x)))[0] for x in df.name.values]
+        gcp_list = [glob.glob(os.path.join(gcp,'*{}*.gcp'.format(x)))[0] for x in df.name.values]
         #also append the clean gcp here
         print(os.path.join(gcp,'*clean*_gcp.gcp'))
         gcp_list.append(glob.glob(os.path.join(gcp,'*clean*_gcp.gcp'))[0])
@@ -186,8 +187,8 @@ def main():
         #run_cmd('bundle_adjust', round1_opts+ba_args)
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split(df.name.values[0])[0]
-            print(ba_prefix+identifier+f'-{df.name.values[0]}*.tsai')
-            cam_list = [glob.glob(ba_prefix+identifier+f'-{img}*.tsai')[0] for img in df.name.values]
+            print(ba_prefix+identifier+'-{}*.tsai'.format(df.name.values[0]))
+            cam_list = [glob.glob(ba_prefix+identifier+'-{}*.tsai'.format(img))[0] for img in df.name.values]
             print(len(cam_list))
             ba_args = img_list+cam_list+gcp_list
             round2_opts = get_ba_opts(
@@ -218,8 +219,8 @@ def main():
         run_cmd('bundle_adjust', round1_opts+ba_args)
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split(os.path.splitext(os.path.basename(img_list[0]))[0],2)[0]
-            print(ba_prefix+f'-{identifier}*.tsai')
-            cam_list = glob.glob(os.path.join(ba_prefix+ f'-{identifier}*.tsai'))
+            print(ba_prefix+'-{}*.tsai'.format(identifier))
+            cam_list = glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier)))
             ba_args = img_list+cam_list+gcp_list
             round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,
                                       flavor='2round_gcp_2', session=session, gcp_transform=True)

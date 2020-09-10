@@ -1,11 +1,11 @@
 #! /usr/bin/env python
 import numpy as np
-from pygeotools.lib import geolib,iolib
+from pygeotools.lib import iolib,geolib
 import os,sys,glob,shutil
 import pandas as pd
 import geopandas as gpd
 from pyproj import Proj, transform
-from rpcm import rpc_from_geotiff
+#from rpcm import rpc_from_geotiff
 from distutils.spawn import find_executable
 import subprocess
 import ast
@@ -26,12 +26,13 @@ def run_cmd(bin, args, **kw):
     """
     #Note, need to add full executable
     #from dshean/vmap.py
+    #binpath = os.path.join('/home/sbhushan/src/StereoPipeline/bin',bin)
     binpath = find_executable(bin)
-    if binpath is None:
-        msg = ("Unable to find executable %s\n"
-        "Install ASP and ensure it is in your PATH env variable\n"
-       "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
-        sys.exit(msg)
+    #if binpath is None:
+        #msg = ("Unable to find executable %s\n"
+        #"Install ASP and ensure it is in your PATH env variable\n"
+       #"https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
+        #sys.exit(msg)
     #binpath = os.path.join('/opt/StereoPipeline/bin/',bin)
     call = [binpath,]
     #print(call)
@@ -39,9 +40,9 @@ def run_cmd(bin, args, **kw):
     #print(call)
     #print(' '.join(call))
     try:
-        out = subprocess.check_output(call,encoding='UTF-8')
+        out = subprocess.check_output(call)
     except:
-        out = f"the command {call} failed to run, see corresponding asp log"
+        out = "the command {} failed to run, see corresponding asp log".format(call)
     return out
 
 def read_tsai_dict(tsai):
@@ -51,11 +52,11 @@ def read_tsai_dict(tsai):
     Parameters
     ----------
     tsai: str
-        path to ASP frame camera model 
+        path to ASP frame camera model
     Returns
     ----------
-    output: dictionary 
-        dictionary containing camera model parameters 
+    output: dictionary
+        dictionary containing camera model parameters
     #TODO: support distortion model
     """
     camera = os.path.basename(tsai)
@@ -67,9 +68,9 @@ def read_tsai_dict(tsai):
     cu = np.float(content[4].split(' = ',4)[1]) # optical center in x
     cv = np.float(content[5].split(' = ',4)[1]) # optical center in y
     cam = content[9].split(' = ',10)[1].split(' ')
-    cam_cen = [np.float(x) for x in cam] # camera center coordinates in ECEF 
+    cam_cen = [np.float(x) for x in cam] # camera center coordinates in ECEF
     rot = content[10].split(' = ',10)[1].split(' ')
-    rot_mat = [np.float(x) for x in rot] # rotation matrix for camera to world coordinates transformation 
+    rot_mat = [np.float(x) for x in rot] # rotation matrix for camera to world coordinates transformation
     pitch = np.float(content[11].split(' = ',10)[1]) # pixel pitch
     cam_cen_lat_lon = geolib.ecef2ll(cam_cen[0],cam_cen[1],cam_cen[2]) # camera center coordinates in geographic coordinates
     tsai_dict = {'camera':camera,'focal_length':(fu,fv),'optical_center':(cu,cv),'cam_cen_ecef':cam_cen,'cam_cen_wgs':cam_cen_lat_lon,'rotation_matrix':rot_mat,'pitch':pitch}
@@ -97,7 +98,7 @@ def make_tsai(outfn,cu,cv,fu,fv,rot_mat,C,pitch):
     - NOTE:
         # Cameras with ASP's distortion model is currently not implemneted
     """
-    out_str = f'VERSION_4\nPINHOLE\nfu = {fu}\nfv = {fv}\ncu = {cu}\ncv = {cv}\nu_direction = 1 0 0\nv_direction = 0 1 0\nw_direction = 0 0 1\nC = {C[0]} {C[1]} {C[2]}\nR = {rot_mat[0][0]} {rot_mat[0][1]} {rot_mat[0][2]} {rot_mat[1][0]} {rot_mat[1][1]} {rot_mat[1][2]} {rot_mat[2][0]} {rot_mat[2][1]} {rot_mat[2][2]}\npitch = {pitch}\nNULL'
+    out_str = 'VERSION_4\nPINHOLE\nfu = {}\nfv = {}\ncu = {}\ncv = {}\nu_direction = 1 0 0\nv_direction = 0 1 0\nw_direction = 0 0 1\nC = {} {} {}\nR = {} {} {} {} {} {} {} {} {}\npitch = {}\nNULL'.format(fu,fv,cu,cv,C[0],C[1],C[2],rot_mat[0][0],rot_mat[0][1],rot_mat[0][2],rot_mat[1][0],rot_mat[1][1],rot_mat[1][2],rot_mat[2][0],rot_mat[2][1],rot_mat[2][2],pitch)
     with open(outfn,'w') as f:
         f.write(out_str)
 
@@ -129,7 +130,7 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             path to reference DEM to compute the ground control
         camera: str
             path to initial camera (e.g. RPC camera for L1B triplets)
-        frame_index: str 
+        frame_index: str
             path to frame_index.csv containing attitude ephermis data for L1A skysat videos
         #output filenames:
         out_fn: str
@@ -156,6 +157,7 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             cam_gen_opt.extend(['--input-camera',camera])
         if frame_index:
             cam_gen_opt.extend(['--frame-index',frame_index])
+            cam_gen_opt.extend(['--parse-ecef'])
         cam_gen_opt.extend(['--refine-camera'])
         cam_gen_args = [img]
         out = run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
@@ -184,7 +186,7 @@ def clean_gcp(gcp_list,outdir):
     ----------
     gcp_list: list
         list of gcp paths
-    outdir: str 
+    outdir: str
         directory where clean consolidated gcp will be saved as clean_gcp.gcp
     """
     df_list = [pd.read_csv(x,header=None,delimiter=r"\s+") for x in gcp_list]
@@ -220,7 +222,7 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
     most of the parameters are tweaked to handle Planet SkySat data
     See ASP's bundle adjustment documentation: https://stereopipeline.readthedocs.io/en/latest/tools/bundle_adjust.html#
     Parameters
-    ---------- 
+    ----------
     ba_prefix: str
         prefix with which bundle adjustment results will be saved (can be a path, general convention for repo is some path with run prefix, eg., ba_pinhole1/run)
     camera_weight: int/float
@@ -243,15 +245,15 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
         number of solver iterations, default at 2000.
     lon_lat_limit: tuple
         Clip the match point/gcps to lie only within this limit after optimization (min,max) #TODO
-    elevation_limit: tuple 
+    elevation_limit: tuple
         Clip the match point/gcps to lie only within this (min,max) limit after optimization
-    
+
     Returns
     ----------
     ba_opt: list
         a list of arguments to be run using subprocess command.
     """
-     
+
     ba_opt = []
     ba_opt.extend(['-o', ba_prefix])
     ba_opt.extend(['--min-matches', '4'])
@@ -308,11 +310,11 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         path to input DEM over which images will be draped (default: WGS84, orthorectify just over datum)
     tr: float/int
         target resolution of orthorectified output image
-    t_srs: str 
+    t_srs: str
         target projection of orthorectified output image (default: EPSG:4326)
-    cam: str 
+    cam: str
         if pinhole session, this will be the path to pinhole camera model
-    ba_prefix: str 
+    ba_prefix: str
         Bundle adjustment output for RPC camera.
     Returns
     ----------
@@ -333,7 +335,7 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     out = run_cmd('mapproject',map_opt+map_args)
     return out
 
-def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
+def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
     """
     mosaic  input image list using ASP's dem_mosaic program.
     See dem_mosaic documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/dem_mosaic.html
@@ -345,9 +347,9 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
         Path to output mosaiced image
     tr: float/int
         target resolution of orthorectified output image
-    t_srs: str 
+    t_srs: str
         target projection of orthorectified output image (default: EPSG:4326)
-    stats: str 
+    stats: str
         metric to use for mosaicing
     Returns
     ----------
@@ -363,6 +365,8 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None):
         dem_mosaic_opt.extend(['--tr', str(tr)])
     if tsrs:
         dem_mosaic_opt.extend(['--t_srs', tsrs])
+    if tile_size:
+        dem_mosaic_opt.extend(['--tile-size',str(tile_size)])
     dem_mosaic_args = img_list
     out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
     return out
@@ -379,13 +383,13 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
         number of threads to use for each stereo job (default: 4)
     ba_prefix: str
         if rpc, read adjustment to rpc files from this path
-    align: str 
+    align: str
         alignment method to be used befor correlation (default: Affineepipolar). Note will only be relevant if non-ortho images are used for correlation
-    xcorr: int 
+    xcorr: int
         Whether to perform cross-check (forward+backward search during stereo), default is 2, so check for disparity first from left to right and then from right to left
     std_mask: int
         this does not perform what is expected, so omitted now
-    std_kernel: int 
+    std_kernel: int
         omitted for now
     lv: int
         number of pyramidal overview levels for stereo correlation, defualt is 5 levels
@@ -448,7 +452,7 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
     - median-filter-size, --texture-smooth-size (I guess these are set to some defualts for sgm/mgm ?)
     """
     # stereo_tri_args:
-    disp_trip = 10000
+    disp_trip = 2000
     if not mvs:
         stereo_opt.extend(['--num-matches-from-disp-triplets', str(disp_trip)])
         stereo_opt.extend(['--unalign-disparity'])
@@ -456,7 +460,7 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
 
 def convergence_angle(az1, el1, az2, el2):
     """
-    function to calculate convergence angle between two satellites 
+    function to calculate convergence angle between two satellites
     # Credits: from David's dgtools
     Parameters
     ----------
@@ -481,21 +485,21 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
     ----------
     outprefix: str
         prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
-    max_displacement: float/int 
+    max_displacement: float/int
         Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
-    align: str 
-        ICP's alignment algorithm to use. default: point-to-plane 
-    source: bool 
+    align: str
+        ICP's alignment algorithm to use. default: point-to-plane
+    source: bool
         if True, this tells the the algorithm to align the source to reference DEM/PC. If false, this tells the program to align reference to source and save inverse transformation. default: True
-    trans_only: bool 
+    trans_only: bool
         if True, this instructs the program to compute translation only when point cloud optimization. Default: False
-    
+
     Returns
     ----------
     pc_align_opt: list
         list of pc_align parameteres
     """
-   
+
     pc_align_opts = []
     pc_align_opts.extend(['--alignment-method', align])
     pc_align_opts.extend(['--max-displacement', str(max_displacement)])
@@ -517,8 +521,8 @@ def get_point2dem_opts(tr, tsrs):
     tr: float/int
         target resolution of output DEM
     tsrs: str
-        projection of output DEM 
-    
+        projection of output DEM
+
     Returns
     ----------
     point2dem_opts: list
@@ -536,12 +540,12 @@ def get_total_shift(pc_align_log):
     returns total shift by pc_align
     Parameters
     ----------
-    pc_align_log: str 
+    pc_align_log: str
         path to log file written by ASP pc_align run
-    
+
     Returns
     ----------
-    total_shift: float 
+    total_shift: float
         value of applied displacement
     """
     with open(pc_align_log, 'r') as f:
@@ -554,16 +558,16 @@ def get_total_shift(pc_align_log):
 def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False):
     """
     This function implements the full DEM alignment workflow using ASP's pc_align and point2dem programs
-    See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html 
+    See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
     Parameters
     ----------
     ref_dem: str
         path to reference DEM for alignment
     source_dem: str
         path to source DEM to be aligned
-    max_displacement: float 
+    max_displacement: float
         Maximum expected displacement between input DEMs, useful for culling outliers before solving for shifts, default: 100 m
-    outprefix: str 
+    outprefix: str
         prefix with which pc_align results will be saved (can be a path, general convention for repo is some path with run prefix, eg., aligned_to/run)
     align: str
         ICP's alignment algorithm to use. default: point-to-plane
@@ -588,21 +592,21 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         source = False
         pc_align_args = [source_dem, ref_dem]
         pc_id = 'trans_reference.tif'
-    print(f"Aligning clouds via the {align} method")
-    
+    print("Aligning clouds via the {} method".format(align))
+
     pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only)
     pc_align_log = run_cmd('pc_align', pc_align_opts + pc_align_args)
     print(pc_align_log)
     # this try, except block checks for 2 things.
     #- Did the transformed point-cloud got produced ?
-    #- was the maximum displacement greater than twice the max_displacement specified by the user ? 
+    #- was the maximum displacement greater than twice the max_displacement specified by the user ?
       # 2nd condition is implemented for tricky alignement of individual triplet DEMs to reference, as some small DEMs might be awkardly displaced to > 1000 m.
     # if the above conditions are not met, then gridding of the transformed point-cloud into final DEM will not occur.
     try:
         pc = glob.glob(outprefix + '*'+pc_id)[0]
         pc_log = sorted(glob.glob(outprefix+'*'+'log-pc_align*.txt'))[-1] # this will hopefully pull out latest transformation log
         max_disp = get_total_shift(pc_log)
-        print(f"Maximum displacement is {max_disp}")
+        print("Maximum displacement is {}".format(mas_disp))
         if max_disp <= 2*max_displacement:
             grid = True
         else:
@@ -613,7 +617,7 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
     if grid == True:
         point2dem_opts = get_point2dem_opts(tr, tsrs)
         point2dem_args = [pc]
-        print(f"Saving aligned reference DEM at {os.path.splitext(pc)[0]}-DEM.tif")
+        print("Saving aligned reference DEM at {}-DEM.tif".format(os.path.splitext(pc)[0]))
         p2dem_log = run_cmd('point2dem', point2dem_opts + point2dem_args)
         print(p2dem_log)
     elif grid == False:
@@ -627,19 +631,19 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
     Parameters
     ----------
     t: str
-        session, or for here, type of input camera, default: pinhole 
+        session, or for here, type of input camera, default: pinhole
     dem: str
         path to DEM which will be used for calculating RPC polynomials
-    gsd: float 
+    gsd: float
         Expected ground-samplind distance
-    num_samples: int 
+    num_samples: int
         Sampling for RPC approximation calculation (default=50)
     Returns
     ----------
     cam2rpc_opts: list
         A list of arguments for cam2rpc call.
     """
- 
+
     cam2rpc_opts = []
     cam2rpc_opts.extend(['--dem-file', dem])
     dem_ds = iolib.fn_getds(dem)
@@ -660,7 +664,7 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
 def read_pc_align_transform(transformation):
     """
     Read translation and rotation component from pc_aling 4x4 transformation matrix
-    
+
     Parameters
     ----------
     transformation: str
@@ -686,7 +690,7 @@ def read_pc_align_transform(transformation):
 def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=False, dem=None, gsd=None, img=False):
     """
     Align tsai cameras based on pc_align transformation matrix
-    
+
     Parameters
     ----------
     pinhole_tsai: str
@@ -705,7 +709,7 @@ def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=Fals
         Output ground sampling distance to be written to RPC information
     img: str
         Path to image file for which RPC is being written, this is used in computing image dimension while RPC computation
-    
+
     Returns
     ----------
     out: list
@@ -728,4 +732,4 @@ def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=Fals
         cam2rpc_args = [img, outfn, rpc_xml]
         run_cmd('cam2rpc', cam2rpc_opts + cam2rpc_args)
     out = [cam_cen_adj, cam_rotation_adj]
-    return out   
+    return out

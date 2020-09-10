@@ -66,7 +66,7 @@ def main():
         ref_dem=args.refdem
         source_dem_list=args.source_dem_list
         max_displacement=args.max_displacement
-        outprefix_list=[f'{os.path.splitext(source_dem)[0]}_aligned_to{os.path.splitext(os.path.basename(ref_dem))[0]}' for source_dem in source_dem_list]
+        outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
         align=args.align
         if args.trans_only == 0:
             trans_only=False
