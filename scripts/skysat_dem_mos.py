@@ -42,7 +42,7 @@ def main():
             try:
                D_sub = iolib.fn_getma(os.path.join(for_nadir_dir,'run-D_sub.tif'),3)
                stats = [np.percentile(D_sub.compressed(),(2,98)),np.mean(D_sub.compressed())]
-               DEM = glob.glob(os.path.join(for_nadir_dir,f'run*{identifier}*-DEM.tif'))[0]
+               DEM = glob.glob(os.path.join(for_nadir_dir,'run*{}*-DEM.tif'.format(identifier)))[0]
                valid_for_nadir_dir.append(for_nadir_dir)
             except:
                continue
@@ -51,7 +51,7 @@ def main():
                # see ASP issue for this dirty hack: https://github.com/NeoGeographyToolkit/StereoPipeline/issues/308
                 D_sub = iolib.fn_getma(os.path.join(for_aft_dir,'run-D_sub.tif'),3)
                 stats = [np.percentile(D_sub.compressed(),(2,98)),np.mean(D_sub.compressed())]
-                DEM = glob.glob(os.path.join(for_aft_dir,f'run*{identifier}*-DEM.tif'))[0]
+                DEM = glob.glob(os.path.join(for_aft_dir,'run*{}*-DEM.tif'.format(identifier)))[0]
                 valid_for_aft_dir.append(for_aft_dir)
             except:
                 continue
@@ -59,21 +59,21 @@ def main():
             try:
                 D_sub = iolib.fn_getma(os.path.join(nadir_aft_dir,'run-D_sub.tif'),3)
                 stats = [np.percentile(D_sub.compressed(),(2,98)),np.mean(D_sub.compressed())]
-                DEM = glob.glob(os.path.join(nadir_aft_dir,f'run*{identifier}*-DEM.tif'))[0]
+                DEM = glob.glob(os.path.join(nadir_aft_dir,'run*{}*-DEM.tif'.format(identifier)))[0]
                 valid_nadir_aft_dir.append(nadir_aft_dir)
             except:
                 continue
-        for_nadir_list = [glob.glob(os.path.join(dir,f'run*{identifier}*-DEM.tif'))[0] for dir in valid_for_nadir_dir]
-        nadir_aft_list = [glob.glob(os.path.join(dir,f'run*{identifier}*-DEM.tif'))[0] for dir in valid_nadir_aft_dir]
-        for_aft_list = [glob.glob(os.path.join(dir,f'run*{identifier}*-DEM.tif'))[0] for dir in valid_for_aft_dir]
+        for_nadir_list = [glob.glob(os.path.join(dir,'run*{}*-DEM.tif'.format(identifier)))[0] for dir in valid_for_nadir_dir]
+        nadir_aft_list = [glob.glob(os.path.join(dir,'run*{}*-DEM.tif'.format(identifier)))[0] for dir in valid_nadir_aft_dir]
+        for_aft_list = [glob.glob(os.path.join(dir,'run*{}*-DEM.tif'.format(identifier)))[0] for dir in valid_for_aft_dir]
         total_dem_list = for_nadir_list+for_aft_list+nadir_aft_list
         stats_list = ['nmad','count','median']
-        print(f'total dems are {len(total_dem_list)}')
-        out_fn_list = [os.path.join(out_folder,f'triplet_{stat}_mos.tif') for stat in stats_list]
+        print('total dems are {}'.format(len(total_dem_list)))
+        out_fn_list = [os.path.join(out_folder,'triplet_{}_mos.tif'.format(stat)) for stat in stats_list]
         print("Mosaicing output total per-pixel nmad, count, nmad and 3 DEMs from 3 stereo combinations in parallel")
-        dem_mos_log = p_map(asp.dem_mosaic,[total_dem_list]*3+[for_aft_list,nadir_aft_list,for_nadir_list],out_fn_list+[os.path.join(out_folder,x) for x in ['for_aft_dem_median_mos.tif', 'nadir_aft_dem_median_mos.tif', 'for_nadir_dem_median_mos.tif']],['None']*6,[None]*6,stats_list+['median']*3)
+        dem_mos_log = p_map(asp.dem_mosaic,[total_dem_list]*3+[for_aft_list,nadir_aft_list,for_nadir_list],out_fn_list+[os.path.join(out_folder,x) for x in ['for_aft_dem_median_mos.tif', 'nadir_aft_dem_median_mos.tif', 'for_nadir_dem_median_mos.tif']],['None']*6,[None]*6,stats_list+['median']*3,num_cpus=1)
         out_log_fn = os.path.join(out_folder,'skysat_triplet_dem_mos.log')
-        print(f"Saving triplet DEM mosaic log at {out_log_fn}")
+        print("Saving triplet DEM mosaic log at {}".format(out_log_fn))
         with open(out_log_fn,'w') as f:
             for log in dem_mos_log:
                 f.write(log) 
@@ -84,14 +84,14 @@ def main():
             try:
                 D_sub = iolib.fn_getma(os.path.join(video_dir,'run-D_sub.tif'),3)
                 stats = [np.percentile(D_sub.compressed(),(2,98)),np.mean(D_sub.compressed())]
-                DEM = glob.glob(os.path.join(video_dir,f'run*{identifier}*-DEM.tif'))[0]
+                DEM = glob.glob(os.path.join(video_dir,'run*{}*-DEM.tif'.format(identifier)))[0]
                 valid_video_dir.append(video_dir)
             except:
                 continue 
         video_dem_list = [glob.glob(os.path.join(dir,'*-DEM.tif'))[0] for dir in valid_video_dir]
         stats_list = ['nmad','count','median']
-        print(f'total dems are {len(video_dem_list)}')
-        out_fn_list = [os.path.join(out_folder,f'video_{stat}_mos.tif') for stat in stats_list]
+        print('total dems are {}'.format(len(video_dem_list)))
+        out_fn_list = [os.path.join(out_folder,'video_{}_mos.tif'.format(stat)) for stat in stats_list]
         dem_mos_log = p_map(asp.dem_mosaic,[video_dem_list]*3,out_fn_list,['None']*3,[None]*3,stats_list) 
         out_log_fn = os.path.join(out_folder,'skysat_video_dem_mos.log')
         with open(out_log_fn,'w') as f:

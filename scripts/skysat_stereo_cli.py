@@ -15,6 +15,8 @@ def getparser():
     session_choices = ['rpc', 'nadirpinhole', 'rpcmaprpc', 'pinholemappinhole']
     # mapprojecting inputs are faster to process, and generally more complete
     # (less holes) + accurate (less blunders in stereo matching)
+    parser.add_argument('-threads',default=cpu_count(),type=int,
+            help='number of threads to use for each stereo process, (default: %(default)s)')
     parser.add_argument('-t',default='nadirpinhole',choices=session_choices,help='choose between pinhole and rpc mode (default: %(default)s)')
     parser.add_argument('-img',default=None,help='folder containing images',required=True)
     parser.add_argument('-cam',default=None,help='folder containing cameras, if using nadirpinhole/pinholemappinhole workflow',required=False)
@@ -75,24 +77,27 @@ def main():
                 full_extent=False
             job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=args.cam,ba_prefix=args.ba_prefix,dem=args.dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol,block=args.block,frame_index=frame_gdf,full_extent=full_extent)
     elif mode == 'triplet':
-        job_list = skysat.triplet_stereo_job_list(t=args.t, overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, texture=texture, outfol=outfol, block=args.block)
+        job_list = skysat.triplet_stereo_job_list(t=args.t,
+                threads = args.threads,overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, texture=texture, outfol=outfol, block=args.block)
     # decide on number of processes
     # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
     # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
     # next build should accept no of jobs and stereo threads as inputs
-    def_jobs = 40
+    print(job_list[0])
+    def_jobs = 4
     n_cpu = cpu_count()
     if def_jobs > n_cpu:
         jobs = n_cpu
     else:
         jobs = def_jobs
     #print(job_list)
+    jobs = 4
     stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
     stereo_log_fn = os.path.join(outfol,'stereo_log.log')
-    print(f"Consolidated stereo log saved at {stereo_log_fn}")
-    with open(stereo_log_fn,'w') as f:
-        for logs in stereo_log:
-            f.write(logs)
+    print("Consolidated stereo log saved at {}".format(stereo_log_fn))
+    #with open(stereo_log_fn,'w') as f:
+     #   for logs in stereo_log:
+      #      f.write(logs)
     print("Script is complete")
 
 if __name__ == "__main__":
