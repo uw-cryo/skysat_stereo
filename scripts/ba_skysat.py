@@ -43,6 +43,7 @@ def run_cmd(bin, args, **kw):
 
 def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,lon_lat_limit=None,elevation_limit=None):
     ba_opt = []
+    ba_opt.extend(['--threads', '28'])
     ba_opt.extend(['-o', ba_prefix])
     ba_opt.extend(['--min-matches', '4'])
     ba_opt.extend(['--disable-tri-ip-filter'])
@@ -62,7 +63,7 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
         ba_opt.extend(['--inline-adjustments'])
     if flavor == '2round_gcp_1':
         ba_opt.extend(['--num-iterations', str(num_iterations)])
-        ba_opt.extend(['--num-passes', '3'])
+        ba_opt.extend(['--num-passes', '2'])
     elif flavor == '2round_gcp_2':
         ba_opt.extend(['--num-iterations', '0'])
         ba_opt.extend(['--num-passes', '1'])
