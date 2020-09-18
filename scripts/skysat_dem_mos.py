@@ -88,7 +88,7 @@ def main():
                 valid_video_dir.append(video_dir)
             except:
                 continue 
-        video_dem_list = [glob.glob(os.path.join(dir,'*-DEM.tif'))[0] for dir in valid_video_dir]
+        video_dem_list = [glob.glob(os.path.join(dir,f'run*{identifier}*-DEM.tif'))[0] for dir in valid_video_dir]
         stats_list = ['nmad','count','median']
         print(f'total dems are {len(video_dem_list)}')
         out_fn_list = [os.path.join(out_folder,f'video_{stat}_mos.tif') for stat in stats_list]
