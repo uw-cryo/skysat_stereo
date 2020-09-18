@@ -25,7 +25,7 @@ def getparser():
     parser.add_argument('-overlap_pkl',default=None,help='pkl dataframe containing entries of overlapping pairs for triplet run, obtained from skysat_overlap_parallel.py')
     parser.add_argument('-dem',default=None,help='Reference DEM to be used for frame camera initialisation')
     product_levels = ['l1a','l1b']
-    parser.add_argument('-product_level', choices = product_levels,default='l1a',required = False, help = 'Product level being processed, (default: %(default)s)')
+    parser.add_argument('-product_level', choices = product_levels,default='l1b',required = False, help = 'Product level being processed, (default: %(default)s)')
     return parser
 
 def main():
@@ -51,20 +51,20 @@ def main():
         if sampling == 'sampling_interval':
             print("Hardcoded sampling interval results in frame exclusion at the end of the video sequence based on step size, better to chose the num_images mode and the program will equally distribute accordingly")
             idx = np.arange(0,num_samples,sampler)
-            outdf = f'{os.path.splitext(outdf)[0]}_sampling_inteval_{sampler}.csv'
+            outdf = '{}_sampling_inteval_{}.csv'.format(os.path.splitext(outdf)[0],sampler)
         else:
-            print(f"Sampling {sampler} from {num_samples} of the input video sequence")
+            print("Sampling {} from {} of the input video sequence".format(sampler,num_samples))
             idx = np.linspace(0,num_samples-1,sampler,dtype=int)
-            outdf = f'{os.path.splitext(outdf)[0]}_sampling_inteval_aprox{idx[1]-idx[0]}.csv'
+            outdf = '{}_sampling_inteval_aprox{}.csv'.format(os.path.splitext(outdf)[0],idx[1]-idx[0])
         sub_sampled_frames = frames[idx]
         sub_df = frame_index[frame_index['name'].isin(list(sub_sampled_frames))]
         sub_df.to_csv(outdf,sep=',',index=False)
         #this is camera/gcp initialisation
         n = len(sub_sampled_frames)
-        img_list = [glob.glob(os.path.join(img_folder,f'{frame}*.tiff'))[0] for frame in sub_sampled_frames]
+        img_list = [glob.glob(os.path.join(img_folder,'{}*.tiff'.format(frame)))[0] for frame in sub_sampled_frames]
         pitch = [1]*n
-        out_fn = [os.path.join(outdir,f'{frame}_frame_idx.tsai') for frame in sub_sampled_frames]
-        out_gcp = [os.path.join(outdir,f'{frame}_frame_idx.gcp') for frame in sub_sampled_frames]
+        out_fn = [os.path.join(outdir,'{}_frame_idx.tsai'.format(frame)) for frame in sub_sampled_frames]
+        out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
         frame_index = [args.frame_index]*n
        	camera = [None]*n
 
@@ -72,11 +72,14 @@ def main():
         df = pd.read_pickle(args.overlap_pkl)
         img_list = list(np.unique(np.array(list(df.img1.values)+list(df.img2.values))))
         img_list = [os.path.splitext(os.path.basename(img))[0] for img in img_list]
-        cam_list = [glob.glob(os.path.join(img_folder,f'{img}*.tif'))[0] for img in img_list]
+        cam_list = [glob.glob(os.path.join(img_folder,'{}*.tif'.format(img)))[0] for img in img_list]
         n = len(img_list)
-        pitch = [0.8]*n
-        out_fn = [os.path.join(outdir,f'{frame}_rpc.tsai') for frame in img_list]
-        out_gcp = [os.path.join(outdir,f'{frame}_rpc.gcp') for frame in img_list]
+        if args.product_level == 'l1b':
+            pitch = [0.8]*n
+        else:
+            pitch = [1.0]*n
+        out_fn = [os.path.join(outdir,'{}_rpc.tsai'.format(frame)) for frame in img_list]
+        out_gcp = [os.path.join(outdir,'{}_rpc.gcp'.format(frame)) for frame in img_list]
         camera = cam_list
         frame_index = [None]*n
         img_list = cam_list
@@ -96,8 +99,8 @@ def main():
     # saving subprocess consolidated log file
     from datetime import datetime
     now = datetime.now()
-    log_fn = os.path.join(outdir,f'camgen_{now}.log')
-    print(f"saving subprocess camgen log at {log_fn}")
+    log_fn = os.path.join(outdir,'camgen_{}.log'.format(now))
+    print("saving subprocess camgen log at {}".format(log_fn))
     with open(log_fn,'w') as f:
         for log in cam_gen_log:
             f.write(log)

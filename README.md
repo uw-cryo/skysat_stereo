@@ -1,72 +1,68 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3940086.svg)](https://doi.org/10.5281/zenodo.3940086)
+
 # skysat_stereo
-A collection of scripts and functions to process Planet SkySat imagery
+Tools and libraries for processing Planet SkySat imagery, including camera model refinement, stereo reconstruction, and orthomosaic production
 
-## Overview
-Planet operates a constellation of 13 SkySat-C SmallSats, which can acquire very high resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand high-resolution Digital Elevation Model(DEM)s for any point on the Earth's surface, with immense applications for Earth science research. However, production of DEMs from SkySat imagery products is currently limited by the inherent accuracy of the default camera models. In this project. we developed an automated workflow to improve the accuracy of the SkySat camera models and a pipeline to produce accurate DEMs and orthoimage mosaics from the refined camera models.
+## Introduction
+Planet operates a constellation of 13 SkySat-C SmallSats, which can acquire very-high-resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand, high-resolution Digital Elevation Models (DEMs) for any point on the Earth's surface, with broad applications for Earth science research. However, the quality of these DEMs is currently limited by the geolocation accuracy of the default SkySat camera models, and few existing photogrammetry tools can process the SkySat images.
 
-### Repository Purpose
-This Repository contains the scripts developed for automated stereo processing of SkySat products. Currently, the main purpose of the repository is to offer a supplement to the manuscript under review. But the repository is under active development and we will be updating the functions, documentation, make the pipeline more robust and potentially add unit tests. We will also add a dedicated contributing section, but till that is done, we welcome early feedback from people who had a chance to visit this page :) !
-
+## Purpose
+We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript submitted to ISPRS Journal of Photogrammetry and Remote Sensing in July 2020. This repository contains all tools and libraries as a supplement to the manuscript under review.
+This project is under active development and we welcome contributions (information for contributors forthcoming) and preliminary feedback from early visitors (you) :)
 
 ## Contents
-- [skysat_stereo library](/skysat_stereo) contains several python functions for Ames Stereo Pipeline and specific SkySat processing.
-- [scripts directory](/scripts/) contains the following command line scripts for various steps in SkySat processing pipeline.
-1. [skysat_overlap.py](/scripts/skysat_overlap.py) for finding overlapping scenes from the entire triplet stereo collection.
-2. [skysat_preprocess.py](/scripts/skysat_preprocess.py) for sampling/subsetting video scenes and creating frame camera models from input metadata.
-3. [ba_skysat.py](/scripts/ba_skysat.py). Bundle adjustment and camera refinement routine.
-4. [skysat_stereo_cli.py](/scripts/skysat_stereo_cli.py) for performing stereo reconstruction for the input SkySat scenes.
-5. [skysat_dem_mos.py](/scripts/skysat_dem_mos.py) perform mosaicing of triplet stereo and video DEMs and produce relative accuracy and count metrics.
-6. [skysat_pc_cam.py](/scripts/skysat_pc_cam.py) utility to grid in parallel input point-clouds into DEMs, co-register to a reference DEM a single or multiple DEMs, align frame camera models using ICP transformation vectors, produce RPC camera models from aligned frame camera models.
-7. [skysat_orthorectify.py](/scripts/skysat_orthorectify.py) orhtorectify images for browse or scientific purposes, produce orthoimage mosaics from the entire collection.
-8. [plot_disparity.py](/scripts/plot_disparity.py) Plot x,y disparity, intersection error and DEMs from a stereo directory.
+#### [skysat_stereo](/skysat_stereo) - libraries used throughout the processing workflow
+- `asp_utils.py` - library of functions involving components of the NASA Ames Stereo Pipeline
+- `skysat.py` - library of functions specific for SkySat processing
+- `misc_geospatial.py` - miscelaneous functions for geospatial analysis and image processing
 
-- [notebooks](/notebooks/) contains notebooks used in scientific analysis.
+#### [scripts](/scripts/) - command line utilities for the SkySat processing workflow.
+1. [`skysat_overlap.py`](/scripts/skysat_overlap.py) - identifies overlapping scenes
+2. [`skysat_preprocess.py`](/scripts/skysat_preprocess.py) - prepares subset of video scenes, generates frame camera models
+3. [`ba_skysat.py`](/scripts/ba_skysat.py) - bundle adjustment and camera refinement
+4. [`skysat_stereo_cli.py`](/scripts/skysat_stereo_cli.py) - stereo reconstruction
+5. [`skysat_dem_mos.py`](/scripts/skysat_dem_mos.py) - generates DEM composites with relative accuracy and count metrics
+6. [`skysat_pc_cam.py`](/scripts/skysat_pc_cam.py) - point clouds gridding, DEM co-registration, export updated frame and RPC camera models
+7. [`skysat_orthorectify.py`](/scripts/skysat_orthorectify.py) - orthorectify individual scenes and produce orthoimage mosaics
+8. [`plot_disparity.py`](/scripts/plot_disparity.py) - visualize DEM, disparity map, stereo triangulation intersection error map
 
-## Sample Outputs
+#### [notebooks](/notebooks/) - notebooks used during analysis and figure preparation
 
-### Triplet Stereo
+## Sample products
+### SkySat Triplet Stereo
 ![triplet_product](/docs/img/Figure3.jpg)
-
-Figure 1: Sample orthoimage mosaic and DEM composite generated from a SkySat-C triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019.
+Figure 1: Orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019 (Planet Team, 2017).
 
 ![triplet_accuracy](/docs/img/Figure4.jpg)
+Figure 2: Relative and absolute accuracy before (using Planet RPCs) and after the `skysat_stereo` correction workflow.
 
-Figure 2: Measure of relative and absolute accuracy before (using Planet RPC camera) and after (skysat_stereo correction workflow).
-
-### Video
-
+### SkySat Video
 ![video_samples](/docs/img/Figure5.jpg)
+Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crater (after `skysat_stereo` correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019 (Planet Team, 2017).
 
-Figure 3: Sample products from video collection over Mt. St. Helen's crater (after skysat_stereo correction workflow). These final products were derived from L1A imagery that is &copy; Planet, 2019.
-
-![video_planet_rpc](/docs/img/SF2.jpg)
-
-Figure 4: Same as in Figure 3 but produced from Planet provided RPC camera model.
-
-
-## Major Software
+## Dependencies
+- See [environment.yml file](/environment.yml) for complete list of Python packages with pinned version numbers.
 - [NASA Ames Stereo Pipeline v 2.6.2](https://stereopipeline.readthedocs.io/en/latest/)
-- [pygeotools](https://github.com/dshean/pygeotools)
-- [demcoreg](https://github.com/dshean/demcoreg)
-- Python stack ([numpy](https://numpy.org/), [pandas](https://pandas.pydata.org/), [matplotlib](https://matplotlib.org/), [p_tqdm](https://github.com/swansonk14/p_tqdm))
-- Python Geospatial stack ([gdal](https://gdal.org/), [rasterio](https://rasterio.readthedocs.io/en/latest/), [shapely](https://github.com/Toblerity/Shapely), [geopandas](https://geopandas.org/), [contextily](https://contextily.readthedocs.io/en/latest/))
-- See also exact list with specific versions (if any) in the [yml file](/environment.yml).
 
 ## Installation
-The scripts have been developed and tested on Linux operating system and should work for all nix platforms. No tests have been performed on Windows OS. Please see the [install instructions](/docs/install_instructions.md).
-* Note: These scripts were developed to be run on a single [Broadwell node](https://www.nas.nasa.gov/hecc/resources/pleiades.html), using parallel processing technique. The number of concurrent parallel jobs etc., are fixed based on Broadwell's resources. These would be needed to be tweaked so as to run on other setups. This and many more knobs will be generalized as the project evolves.
+Please see the [install instructions](/docs/install_instructions.md).
+
+Notes:
+* These tools were developed and tested on a dedicated [Broadwell node](https://www.nas.nasa.gov/hecc/resources/pleiades.html) on the NASA Pleiades supercomputer, running SUSE Linux Enterprise Server. 
+* Many tools use parallel threads and/or processes, and the hardcoded number of threads and processes were tuned based on the available resources (28 CPUs, 128 GB RAM).  Some utilities should autoscale based on available resources, but others may require modifications for optimization on other systems.
+* The code should work for \*nix platforms. We have not tested on Windows. 
 
 ## License
 This project is licensed under the terms of the MIT License.
 
-
 ## Citation
-Manuscript detailing the software utility is under review. Citation instructions for the manuscript will be updated. For now, if you find the contents of the repository useful for any purposes (scientific/commercial), please cite the package and the manuscript as:
-
-* Insert Zenodo citation text here.....
-
+Accompanying manuscript is under review, and will be available via open access after publication. For now, please cite as:
 * Bhushan, Shashank, Shean, David E., Alexandrov, Oleg, & Henderson, Scott. (2020). Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing, submitted.
+* Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2020, July 11). uw-cryo/skysat_stereo: Zenodo doi release (Version 0.1). Zenodo. http://doi.org/10.5281/zenodo.3940086
 
-## Acknowledgments
+## Funding and Acknowledgments
+* This research was supported by the NASA Terrestrial Hydrology Program (THP) and the NASA Cryosphere Program. Shashank Bhushan was supported by a NASA FINESST award (80NSSC19K1338) and the NASA HiMAT project (NNX16AQ88G). David Shean, Oleg Alexandrov and Scott Henderson were supported by NASA THP award 80NSSC18K1405. SkySat tasking, data access, and supplemental support was provided under the [NASA Commercial Smallsat Data Acquisition Program 2018 Pilot Study](https://sit.earthdata.nasa.gov/about/small-satellite-commercial-data-buy-program)
+* We acknowledge Compton J. Tucker and others at NASA Goddard Space Flight Center and NASA Headquarters for coordinating the Commercial Satellite Data Access Program Pilot and assisting with prelimnary SkySat tasking campaigns. Paris Good at Planet provided invaluable assistance with data acquisition and facilitated discussions with Planet engineering teams. Thanks are also due to Ross Losher, Antonio Martos, Kelsey Jordahl and others at Planet for initial guidance on SkySat-C sensor specifications and camera models. Resources supporting this work were provided by the NASA High-End Computing (HEC) Program through the NASA Advanced Supercomputing (NAS) Division at Ames Research Center. Friedrich Knuth and Michelle Hu provided feedback on initial manuscript outline, code development and documentation. We also acknowledge input from the larger ASP community during photogrammetry discussions.
 
-* Data was funded through the NASA Commercial Data Buy Pilot allocation to NASA Stereo2SWE (80NSSC18K1405) Project. Shashank Bhushan was funded through the NASA FINESST (80NSSC19K1338) and NASA HiMAT (NNX16AQ88G) awards. David Shean, Oleg Alexandrov and Scott Henderson were funded through the NASA Stereo2SWE (80NSSC18K1405) award. We acknowledge Friedrich Knuth and Michelle Hu for providing assistance and feedback on code development and documentation. 
+## Refrences
+Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
