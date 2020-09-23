@@ -131,7 +131,7 @@ def main():
                 # not yet implemented
                 ba_prefix_list = [ba_prefix]*len(img_list)
         print("Mapping given images")
-        ortho_logs = p_map(asp.mapproject,img_list,out_list,session_list,dem_list,tr_list,srs_list,cam_list,num_cpus=2)
+        ortho_logs = p_map(asp.mapproject,img_list,out_list,session_list,dem_list,tr_list,srs_list,cam_list,num_cpus=int(cpu_count()/4))
         ortho_log = os.path.join(outdir,'ortho.log')
         print("Saving Orthorectification log at {}".format(ortho_log))
         with open(ortho_log,'w') as f:
