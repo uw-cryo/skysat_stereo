@@ -80,6 +80,10 @@ def main():
     img2_list = [x[1] for x in valid_list]
     out_df = pd.DataFrame({'img1':img1_list,'img2':img2_list,'overlap_perc':overlap_perc_list})
     out_df.to_pickle(out_fn_overlap)
+    out_fn_stereo = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.pkl'
+    stereo_only_df = skysat.prep_trip_df(out_fn_overlap)
+    stereo_only_df.to_pickle(out_fn_stereo)
+    print("Saving overlap with stereo pairs only")
     print('Script completed in time {} s!'.format(time.time()-init_time))
 
 if __name__=="__main__":
