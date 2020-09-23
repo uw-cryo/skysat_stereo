@@ -5,7 +5,7 @@ import os,sys,glob,shutil
 import pandas as pd
 import geopandas as gpd
 from pyproj import Proj, transform
-#from rpcm import rpc_from_geotiff
+from rpcm import rpc_from_geotiff
 from distutils.spawn import find_executable
 import subprocess
 import ast
@@ -40,7 +40,7 @@ def run_cmd(bin, args, **kw):
     #print(call)
     #print(' '.join(call))
     try:
-        out = subprocess.check_output(call)
+        out = subprocess.check_output(call,encoding='UTF-8')
     except:
         out = "the command {} failed to run, see corresponding asp log".format(call)
     return out
@@ -452,7 +452,7 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
     - median-filter-size, --texture-smooth-size (I guess these are set to some defualts for sgm/mgm ?)
     """
     # stereo_tri_args:
-    disp_trip = 2000
+    disp_trip = 2500
     if not mvs:
         stereo_opt.extend(['--num-matches-from-disp-triplets', str(disp_trip)])
         stereo_opt.extend(['--unalign-disparity'])
