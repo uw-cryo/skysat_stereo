@@ -482,7 +482,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         job_list.append(stereo_opt + stereo_args)
     return job_list
 
-def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',outfol=None,block=0):
+def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',crop_map=True,outfol=None,block=0):
     """
     Builds subprocess job list for triplet collection pairwise implementation
 
@@ -502,16 +502,12 @@ def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam
         Folder containing tsai camera models (None if using RPC models or using bundle adjusted tsai cameras
     dem: str
         Path to DEM used for mapprojection
-    sampling_interval: int
-        interval at which source images will be chosen for sequential reference images in the list
     texture: str
         use option 'low' input image texture is low, 'normal' for normal textured images. This is used for determining the correlation and refinement kernel
     crop_map: bool
         crop images to map extent if True. Cropping to common resolution and extent should give best results in mapprojected images
     outfol: str
         Path to master output folder where the stereo results will be saved
-    frame_index: Geopandas GeoDataframe or Pandas Dataframe
-        dataframe/geodataframe formed from the truncated frame_index.csv written by skysat_preprocess.py. Will be used in determining images to be processed
     block: int
         Select 0 for the defualt MGM matching, 1 for block matching
 
@@ -553,7 +549,10 @@ def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam
             if 'map' in t:
                 out = out + '_map'
                 try:
-                    in_img1, in_img2 = crop_sim_res_extent([img1, img2], out,rpc=rpc)
+                    if crop_map:
+                        in_img1, in_img2 = crop_sim_res_extent([img1, img2], out,rpc=rpc)
+                    else:
+                        in_img1, in_img2 = [img1,img2]
                 except BaseException:
                     continue
             else:
@@ -769,3 +768,38 @@ def res_sort(img_list):
     sorted_img_list = [x for _,x in sorted(zipped_pairs)]
     return sorted_img_list
 
+
+def filter_video_dem_by_nmad(ds_list,min_count=2,max_nmad=5):
+    """
+    Filter Video DEM composites using NMAD and count stats
+    This function will look for and eliminate pixels in median DEM where less than 
+    <min_count> pairwise DEMs contributed and their vertical variability (NMAD) is higher than <max_nmad>
+    Parameters
+    -----------
+    ds_list: list
+        list of gdal datasets, containing median, count and nmad composites in order
+    min_count: numeric
+        minimum count to use in filtering
+    max_nmad: numeric
+        maximum NMAD variability to filter, if count is also <= min_count
+    Returns
+    -----------
+    dem_filt: masked array
+        filtered DEM
+    nmad_filt_c: masked array
+        filtered NMAD map
+    count_filt_c: masked array
+        filtered count map
+    """
+
+    dem = iolib.ds_getma(ds_list[0])
+    count = iolib.ds_getma(ds_list[1])
+    nmad = iolib.ds_getma(ds_list[2])
+    
+    nmad_filt = np.ma.masked_where(nmad>5,nmad)
+    count_filt = np.ma.masked_where(count<2,count)
+    valid_mask = malib.common_mask([nmad_filt,count_filt])
+    nmad_filt_c = np.ma.array(nmad_filt,mask = valid_mask)
+    count_filt_c = np.ma.array(count_filt,mask = valid_mask)
+    dem_filt = np.ma.array(dem,mask = valid_mask)
+    return dem_filt,nmad_filt_c,count_filt_c

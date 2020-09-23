@@ -16,6 +16,13 @@ def getparser():
     parser.add_argument('-identifier',help='if we want to mosaic individually aligned DEM which have been produced by skysat_coreg.py, place the identifiers here',required=False,default=None)
     mode_ch = ['video','triplet']
     parser.add_argument('-mode',default='triplet',choices=mode_ch,help="select if mosaicing video or triplet stereo output DEMs (default: %(default)s)")
+    binary_ch = [1,0]
+    parser.add_argument('-filter_dem',choices=binary_ch,default=1,type=int,
+        help="filter video DEM composites using max NMAD and min count combination (default: %(default)s)")
+    parser.add_argument('-min_video_count',type=float,default=2,
+        help='minimum DEM count to use in filtering (default: %(default)s)')
+    parser.add_argument('-max_video_nmad',type=float,default=5,
+        help='maximum DEM NMAD variability to filter, if DEM count is also <= min_count (default: %(default)s)') 
     return parser 
 
 def main():
@@ -89,7 +96,7 @@ def main():
             except:
                 continue 
         video_dem_list = [glob.glob(os.path.join(dir,f'run*{identifier}*-DEM.tif'))[0] for dir in valid_video_dir]
-        stats_list = ['nmad','count','median']
+        stats_list = ['median','count','nmad']
         print('total dems are {}'.format(len(video_dem_list)))
         out_fn_list = [os.path.join(out_folder,'video_{}_mos.tif'.format(stat)) for stat in stats_list]
         dem_mos_log = p_map(asp.dem_mosaic,[video_dem_list]*3,out_fn_list,['None']*3,[None]*3,stats_list) 
@@ -97,6 +104,18 @@ def main():
         with open(out_log_fn,'w') as f:
             for log in dem_mos_log:
                 f.write(log)
+        if args.filter_dem == 1:
+            print("Filtering DEM using NMAD and count metrics")
+            min_count = args.min_video_count
+            max_nmad = args.max_video_nmad
+            print(f"Filter will use min count of {min_count} and max NMAD of {max_nmad}")
+            mos_ds_list = warplib.memwarp_multi_fn(out_fn_list)
+            # Filtered array list contains dem_filtered,nmad_filtered, count_filtered in order
+            filtered_array_list = skysat.filter_video_dem_by_nmad(mos_ds_list,min_count,max_nmad)
+            trailing_str = f'_filt_max_nmad{max_nmad}_min_count{min_count}.tif'
+            out_filter_fn_list = [os.path.splitext(fn)[0]+trailing_str for fn in out_fn_list]
+            for idx,fn in enumerate(out_filter_fn_list):
+                iolib.writeGTiff(filtered_array_list[idx],fn,mos_ds_list[idx])
     print("Script complete")
 
 if __name__=="__main__":
