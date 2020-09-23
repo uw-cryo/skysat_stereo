@@ -29,6 +29,8 @@ def getparser():
     parser.add_argument('-dem',default=None,help='Reference DEM to be used in triangulation, if input images are mapprojected')
     texture_choices = ['low', 'normal']
     parser.add_argument('-texture',default='normal',choices=texture_choices,help='keyword to adapt processing for low texture surfaces, for example in case of fresh snow (default: %(default)s)',required=False)
+    crop_ops = [True,False]
+    parser.add_argument('-crop_map',default=True,type=bool,choices=crop_ops,help='To crop mapprojected images to same resolution and extent or not before stereo')
     parser.add_argument('-outfol', default=None, help='output folder where stereo outputs will be saved', required=True)
     mvs_choices = [1, 0]
     parser.add_argument('-mvs', default=0, type=int, choices=mvs_choices, help='1: Use multiview stereo triangulation for video data, do matching with next 20 slave for each master image/camera (defualt: %(default)s')
@@ -78,20 +80,15 @@ def main():
             job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=args.cam,ba_prefix=args.ba_prefix,dem=args.dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol,block=args.block,frame_index=frame_gdf,full_extent=full_extent)
     elif mode == 'triplet':
         job_list = skysat.triplet_stereo_job_list(t=args.t,
-                threads = args.threads,overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, texture=texture, outfol=outfol, block=args.block)
+                threads = args.threads,overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, crop_map=args.crop_map,texture=texture, outfol=outfol, block=args.block)
     # decide on number of processes
     # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
     # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
     # next build should accept no of jobs and stereo threads as inputs
     print(job_list[0])
-    def_jobs = 4
     n_cpu = cpu_count()
-    if def_jobs > n_cpu:
-        jobs = n_cpu
-    else:
-        jobs = def_jobs
-    #print(job_list)
-    jobs = 4
+    # no of parallel jobs with user specified threads per job
+    jobs = int(n_cpu/args.threads)
     stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
     stereo_log_fn = os.path.join(outfol,'stereo_log.log')
     print("Consolidated stereo log saved at {}".format(stereo_log_fn))
