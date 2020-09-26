@@ -16,3 +16,6 @@ gdalbuildvrt rainier_lidar_dsm.vrt *DEM.tif
 # convert to cloud optimised geotiff
 #cmd 
 gdal_translate -co TILED=YES -co COMPRESS=LZW -co BIGTIFF=IF_SAFER -co COPY_SRC_OVERVIEWS=YES -co COMPRESS_OVERVIEW=YES -co NUM_THREADS=ALL_CPUS -co PREDICTOR=3 rainier_lidar_dsm.vrt rainier_lidar_dsm.tif
+# adjust for geoid
+#cmd
+dem_geoid --reverse-adjustment rainier_lidar_dsm.tif
