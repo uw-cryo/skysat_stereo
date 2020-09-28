@@ -10,6 +10,7 @@ import geopandas as gpd
 import numpy as np
 from datetime import datetime
 import pandas as pd
+from multiprocessing import cpu_count
 
 # Usage: ba_skysat.py -mode full_video,full_triplet,quick_transform_pc_align,general_ba -t pinhole,rpc -img image_folder -cam optional (rpc might not require it) -ba_prefix out_ba -overlap-list -init_transform -gcp gcp_folder or file
 # TODO:
@@ -42,9 +43,9 @@ def run_cmd(bin, args, **kw):
         raise Exception('ASP step ' + kw['msg'] + ' failed')
 
 
-def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,lon_lat_limit=None,elevation_limit=None):
+def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_weight=0,fixed_cam_idx=None,overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,num_pass=2,lon_lat_limit=None,elevation_limit=None):
     ba_opt = []
-    ba_opt.extend(['--threads', '28'])
+    ba_opt.extend(['--threads', str(cpu_count)])
     ba_opt.extend(['-o', ba_prefix])
     ba_opt.extend(['--min-matches', '4'])
     ba_opt.extend(['--disable-tri-ip-filter'])
@@ -56,21 +57,22 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
     ba_opt.extend(['--min-triangulation-angle', '0.0001'])
     ba_opt.extend(['--save-cnet-as-csv'])
     ba_opt.extend(['--individually-normalize'])
-    ba_opt.extend(['--camera-weight', str(camera_weight)])
+    if camera_weight:
+        ba_opt.extend(['--camera-weight', str(camera_weight)])
+    ba_opt.extend(['--translation-weight',str(translation_weight)])
+    ba_opt.extend(['--rotation-weight',str(rotation_weight)])
+    if fixed_cam_idx:
+        ba_opt(['--fixed-camera-indices',' '.join(np.array(fixed_cam_idx,dtype=str))])
     ba_opt.extend(['-t', session])
     ba_opt.extend(['--remove-outliers-params', '75 3 5 6'])
     # How about adding num random passes here ? Think about it, it might help if we are getting stuck in local minima :)
     if session == 'nadirpinhole':
         ba_opt.extend(['--inline-adjustments'])
-    if flavor == '2round_gcp_1':
         ba_opt.extend(['--num-iterations', str(num_iterations)])
-        ba_opt.extend(['--num-passes', '2'])
-    elif flavor == '2round_gcp_2':
-        ba_opt.extend(['--num-iterations', '0'])
-        ba_opt.extend(['--num-passes', '1'])
-        # gcp_transform=True
-        if gcp_transform:
-            ba_opt.extend(['--transform-cameras-using-gcp'])
+        ba_opt.extend(['--num-passes', str(num_pass)])
+    # gcp_transform=True
+    if gcp_transform:
+        ba_opt.extend(['--transform-cameras-using-gcp'])
         # maybe add gcp arg here, can be added when function is called as well
     if initial_transform:
         ba_opt.extend(['--initial-transform', initial_transform])
@@ -116,6 +118,7 @@ def getparser():
                         help='default overlap limit for video sequence over which feature would be matched  (default: %(default)s)')
     parser.add_argument('-frame_index',default=None,help='subsampled frame_index.csv produced by preprocessing script (default: %(default)s)')
     parser.add_argument('-num_iter',default=2000,help='defualt number of iterations (default: %(default)s)')
+    parser.add_argument('-num_pass',default=2,help='defualt number of solver passes, eliminating points with high reprojection error at each pass (default: %(default)s)')
     parser.add_argument('-dem',default=None,help='DEM to filter match points after optimization')
     parser.add_argument('-bound',default=None,help='Bound shapefile to limit extent of match points after optimization')
     return parser
@@ -206,8 +209,15 @@ def main():
         if args.overlap_list is None:
             print(
                 "Attempted bundle adjust will be expensive, will try to find matches in each and every pair")
+            # the concept is simple
+            #first 2 cameras, and then corresponding first two cameras from next collection are fixed in the first go
+            # these serve as a kind of #GCP, preventing a large drift in the triangulated points/camera extrinsics during optimization
+            img_time_identifier_list = np.array(os.path.basename(img).split('_')[1] for img in img_list)
+            img_time_unique_list = np.unique(img_time_identifier_list)
+            second_collection_list = np.where(img_time_identifier_list == img_time_unique_list[1])[0,1]
+            fix_cam_idx = np.array([0,1]+list(second_collection_list))
             round1_opts = get_ba_opts(
-                ba_prefix, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter)
+                ba_prefix, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,num_pass=args.num_pass,fix_cam_idx=fixed_cam_idx,overlap_list=args.overlap_list)
             # enter round2_opts here only ?
         else:
             round1_opts = get_ba_opts(
@@ -222,9 +232,9 @@ def main():
             identifier = os.path.basename(cam_list[0]).split(os.path.splitext(os.path.basename(img_list[0]))[0],2)[0]
             print(ba_prefix+'-{}*.tsai'.format(identifier))
             cam_list = glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier)))
-            ba_args = img_list+cam_list+gcp_list
-            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,
-                                      flavor='2round_gcp_2', session=session, gcp_transform=True)
+            ba_args = img_list+cam_list
+            fixed_cam_idx2 = np.delete(np.arange(len(img_list),dtype=int),fix_cam_idx)
+            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fix_cam_idx)
         else:
             # round 1 is adjust file
             input_adjustments = ba_prefix
