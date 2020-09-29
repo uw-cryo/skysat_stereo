@@ -1,7 +1,5 @@
 #! /usr/bin/env python
-import os
-import sys
-import glob
+import os,sys,glob,shutil
 import subprocess
 import argparse
 from distutils.spawn import find_executable
@@ -21,8 +19,8 @@ from multiprocessing import cpu_count
 def run_cmd(bin, args, **kw):
     # Note, need to add full executable
     # from dshean/vmap.py
-    binpath = os.path.join('/home/sbhushan/src/StereoPipeline/bin',bin)
-    #binpath = find_executable(bin)
+    #binpath = os.path.join('/home/sbhushan/src/StereoPipeline/bin',bin)
+    binpath = find_executable(bin)
     if binpath is None:
         msg = ("Unable to find executable %s\n"
         "Install ASP and ensure it is in your PATH env variable\n"
@@ -45,7 +43,7 @@ def run_cmd(bin, args, **kw):
 
 def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_weight=0,fixed_cam_idx=None,overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,num_pass=2,lon_lat_limit=None,elevation_limit=None):
     ba_opt = []
-    ba_opt.extend(['--threads', str(cpu_count)])
+    ba_opt.extend(['--threads', str(cpu_count())])
     ba_opt.extend(['-o', ba_prefix])
     ba_opt.extend(['--min-matches', '4'])
     ba_opt.extend(['--disable-tri-ip-filter'])
@@ -61,8 +59,8 @@ def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_we
         ba_opt.extend(['--camera-weight', str(camera_weight)])
     ba_opt.extend(['--translation-weight',str(translation_weight)])
     ba_opt.extend(['--rotation-weight',str(rotation_weight)])
-    if fixed_cam_idx:
-        ba_opt(['--fixed-camera-indices',' '.join(np.array(fixed_cam_idx,dtype=str))])
+    if fixed_cam_idx is not None:
+        ba_opt.extend(['--fixed-camera-indices',' '.join(fixed_cam_idx.astype(str))])
     ba_opt.extend(['-t', session])
     ba_opt.extend(['--remove-outliers-params', '75 3 5 6'])
     # How about adding num random passes here ? Think about it, it might help if we are getting stuck in local minima :)
@@ -209,32 +207,34 @@ def main():
         if args.overlap_list is None:
             print(
                 "Attempted bundle adjust will be expensive, will try to find matches in each and every pair")
-            # the concept is simple
-            #first 2 cameras, and then corresponding first two cameras from next collection are fixed in the first go
-            # these serve as a kind of #GCP, preventing a large drift in the triangulated points/camera extrinsics during optimization
-            img_time_identifier_list = np.array(os.path.basename(img).split('_')[1] for img in img_list)
-            img_time_unique_list = np.unique(img_time_identifier_list)
-            second_collection_list = np.where(img_time_identifier_list == img_time_unique_list[1])[0,1]
-            fix_cam_idx = np.array([0,1]+list(second_collection_list))
-            round1_opts = get_ba_opts(
-                ba_prefix, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,num_pass=args.num_pass,fix_cam_idx=fixed_cam_idx,overlap_list=args.overlap_list)
+        # the concept is simple
+        #first 2 cameras, and then corresponding first two cameras from next collection are fixed in the first go
+        # these serve as a kind of #GCP, preventing a large drift in the triangulated points/camera extrinsics during optimization
+        img_time_identifier_list = np.array([os.path.basename(img).split('_')[1] for img in img_list])
+        img_time_unique_list = np.unique(img_time_identifier_list)
+        second_collection_list = np.where(img_time_identifier_list == img_time_unique_list[1])[0][[0,1,2]]
+        fix_cam_idx = np.array([0,1,2]+list(second_collection_list))
+        print(type(fix_cam_idx)) 
+        round1_opts = get_ba_opts(
+            ba_prefix, session=session,num_iterations=args.num_iter,num_pass=args.num_pass,fixed_cam_idx=fix_cam_idx,overlap_list=args.overlap_list)
             # enter round2_opts here only ?
-        else:
-            round1_opts = get_ba_opts(
-                ba_prefix, overlap_list=overlap_list, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter)
         if session == 'nadirpinhole':
             ba_args = img_list+ cam_list
         else:
             ba_args = img_list
         print("Running round 1 bundle adjustment for given triplet stereo combination")
         run_cmd('bundle_adjust', round1_opts+ba_args)
+        # Save the first and foremost bundle adjustment reprojection error file
+        init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv'))[0]
+        init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
+        shutil.copy2(init_residual_fn_def,init_residual_fn)
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split(os.path.splitext(os.path.basename(img_list[0]))[0],2)[0]
             print(ba_prefix+'-{}*.tsai'.format(identifier))
-            cam_list = glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier)))
+            cam_list = sorted(glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier))))
             ba_args = img_list+cam_list
             fixed_cam_idx2 = np.delete(np.arange(len(img_list),dtype=int),fix_cam_idx)
-            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fix_cam_idx)
+            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fixed_cam_idx2)
         else:
             # round 1 is adjust file
             input_adjustments = ba_prefix
@@ -243,7 +243,9 @@ def main():
             ba_args = img_list+gcp_list
         print("running round 2 bundle adjustment for given triplet stereo combination")
         run_cmd('bundle_adjust', round2_opts+ba_args)
-
+        final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*no_loss_*pointmap*.csv'))[0]
+        final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
+        shutil.copy2(final_residual_fn_def,final_residual_fn)
         # input is just a transform from pc_align or something similar with no optimization
         if mode == 'transform_pc_align':
             if session == 'nadirpinhole':
