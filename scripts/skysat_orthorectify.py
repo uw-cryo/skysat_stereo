@@ -30,7 +30,7 @@ def get_parser():
 	orthomosaic_choice = [1,0]
 	parser.add_argument('-orthomosaic',default=0,type=int,choices=orthomosaic_choice, help="if mode is science, enabling this (1) will also produce a final orthomosaic (default: %(default)s)")
 	parser.add_argument('-copy_rpc',default=0,type=int,choices=orthomosaic_choice,help='if mode is science, enabling this (1) will copy rpc metadata in the orthoimage (default: %(default)s)')
-    data_choices = ['video','triplet']
+	data_choices = ['video','triplet']
 	parser.add_argument('-data',default='triplet',choices=data_choices,help="select if mosaicing video or triplet product in science mode (default: %(default)s)")
 	return parser
 
@@ -138,9 +138,9 @@ def main():
         with open(ortho_log,'w') as f:
             for log in ortho_logs:
                 f.write(log)
-        if args.copy_rpc == 1:
-            print("Copying RPC from native image to orthoimage in parallel")
-            copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=cpu_count())
+		if args.copy_rpc == 1:
+			print("Copying RPC from native image to orthoimage in parallel")
+			copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=cpu_count())
         if args.orthomosaic == 1:
             print("Will also produce median, weighted average and highest resolution orthomosaic")
             if args.data == 'triplet':
