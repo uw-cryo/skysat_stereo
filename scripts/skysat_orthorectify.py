@@ -138,9 +138,9 @@ def main():
         with open(ortho_log,'w') as f:
             for log in ortho_logs:
                 f.write(log)
-		if args.copy_rpc == 1:
-			print("Copying RPC from native image to orthoimage in parallel")
-			copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=cpu_count())
+        if args.copy_rpc == 1:
+            print("Copying RPC from native image to orthoimage in parallel")
+            copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=cpu_count())
         if args.orthomosaic == 1:
             print("Will also produce median, weighted average and highest resolution orthomosaic")
             if args.data == 'triplet':
