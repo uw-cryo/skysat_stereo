@@ -7,7 +7,7 @@ from skysat_stereo import asp_utils as asp
 from skysat_stereo import skysat
 from p_tqdm import p_map
 import itertools
-from pygeotools.lib import iolib
+from pygeotools.lib import iolib,warplib
 
 def getparser():
     parser = argparse.ArgumentParser(description='Script to compute DEM mosaics from triplet output directory')
