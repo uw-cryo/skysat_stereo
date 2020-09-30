@@ -86,11 +86,12 @@ def main():
                         '-tsrs',tsrs,'-DEM',refdem,'-mode','science','-orthomosaic','0','-copy_rpc.py','1','-data','triplet']
             asp.run_cmd(ortho_cmd)
         print("Running stereo using RPC cameras")
-        stereo_cmd = ['skysat_stereo_cli.py','-mode','triplet','-threads','2','-t','rpcmaprpc','-img',init_rpc_ortho,
-                     '-overlap_pkl',overlap_stereo_pkl,'-dem',refdem,'-block','1','-outfol',init_stereo_dir]
+        stereo_cmd = ['skysat_stereo_cli.py','-mode','triplet','-threads','4','-t','rpcmaprpc','-img',init_rpc_ortho,
+                     '-overlap_pkl',overlap_stereo_pkl,'-dem',refdem,'-block','1','-crop_map','0','-outfol',init_stereo_dir]
         asp.run_cmd(stereo_cmd)
+
         # copy dense match file to ba directory
-        dense_match_cmd = ['prep_dense_ba_run.py','-img'
+        dense_match_cmd = ['prep_dense_ba_run.py','-img'python ~/sw/src/skysat_3d/scripts/prep_dense_ba_run.py -img in_img/ -orig_pickle proc_out_rainier_lidar/overlap_with_overlap_perc.pkl -stereo_dir proc_out_rainier_lidar/init_rpc_stereo/ -ba_dir proc_out_rainier_lidar/ba_pinhole  -modify_overlap 0
    if 4 in steps2run:
        # copy  dense match to ba directory
        
