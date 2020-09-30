@@ -7,6 +7,9 @@ from skysat_stereo import skysat
 from p_tqdm import p_map,p_umap
 from multiprocessing import cpu_count
 import argparse
+from rpcm import geo
+from pygeotools.lib import iolib,geolib
+import osr
 
 # TODO:
 # Determine best parameters for RPC generation
@@ -17,7 +20,7 @@ def get_parser():
         parser.add_argument('-mode', help='operation mode', choices=mode_choice, required=True)
         # gridding only choices
         parser.add_argument('-tr', default=2, type=float, help='DEM gridding resolution (default: %(default)s)')
-        parser.add_argument('-tsrs', default='EPSG:32610', help='Projection for gridded DEM (default: %(default)s)')
+        parser.add_argument('-tsrs', default=None, help='Projection for gridded DEM if not using local UTM (default: %(default)s)')
         parser.add_argument('-point_cloud_list', nargs='*', help='List of pointclouds for gridding')
         # classic dem align options, also carried forward to multi_align
         align_choice = ['point-to-point', 'point-to-plane']
@@ -42,11 +45,22 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     mode = args.mode
+    pc_list = args.point_cloud_list
     if mode == 'gridding_only':
         tr = args.tr
-        tsrs = args.tsrs
+        if args.tsrs is not None:
+            tsrs = args.tsrs
+        else:
+           print("Projected Target CRS not provided, reading from the first point cloud")
+           pc_ds = iolib.fn_getds(pc_list[0])
+           wgs_srs = osr.SpatialReference()
+           wgs_srs.ImportFromEPSG(4326)
+           clon,clat = geolib.get_center(pc_ds,t_srs=wgs_srs)
+           epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
+           print(f"Detected EPSG code from point cloud {epsg_code}") 
+           tsrs = epsg_code
+     
         point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs)
-        pc_list = args.point_cloud_list
         job_list = [point2dem_opts + [pc] for pc in pc_list]
         p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = cpu_count())
         print(p2dem_log)
