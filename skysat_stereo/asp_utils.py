@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 import numpy as np
-from pygeotools.lib import iolib,geolib
+from pygeotools.lib import iolib,geolib,malib
 import os,sys,glob,shutil
 import pandas as pd
 import geopandas as gpd
