@@ -55,6 +55,7 @@ def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_we
     ba_opt.extend(['--min-triangulation-angle', '0.0001'])
     ba_opt.extend(['--save-cnet-as-csv'])
     ba_opt.extend(['--individually-normalize'])
+    ba_opt.extend(['--robust-threshold', '10'])
     if camera_weight:
         ba_opt.extend(['--camera-weight', str(camera_weight)])
     ba_opt.extend(['--translation-weight',str(translation_weight)])
@@ -62,7 +63,7 @@ def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_we
     if fixed_cam_idx is not None:
         ba_opt.extend(['--fixed-camera-indices',' '.join(fixed_cam_idx.astype(str))])
     ba_opt.extend(['-t', session])
-    ba_opt.extend(['--remove-outliers-params', '75 3 5 6'])
+    ba_opt.extend(['--remove-outliers-params', '75 3 6 7'])
     # How about adding num random passes here ? Think about it, it might help if we are getting stuck in local minima :)
     if session == 'nadirpinhole':
         ba_opt.extend(['--inline-adjustments'])
@@ -229,7 +230,7 @@ def main():
         init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
         shutil.copy2(init_residual_fn_def,init_residual_fn)
         if session == 'nadirpinhole':
-            identifier = os.path.basename(cam_list[0]).split(os.path.splitext(os.path.basename(img_list[0]))[0],2)[0]
+            identifier = os.path.basename(cam_list[0]).split('_',14)[0][:2]
             print(ba_prefix+'-{}*.tsai'.format(identifier))
             cam_list = sorted(glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier))))
             ba_args = img_list+cam_list
