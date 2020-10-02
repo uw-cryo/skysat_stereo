@@ -751,7 +751,8 @@ def read_px_error(content_line,idx):
         read pixel reprojection error in x and y direction
     """
     pts_array = np.array(content)[idx]
-     = cam_names
+    pts = np.char.split(pts_array,', ')
+    px = np.array([np.float(x[0]) for x in pts])
     py = np.array([np.float(x[1]) for x in pts])
     return px,py
 
