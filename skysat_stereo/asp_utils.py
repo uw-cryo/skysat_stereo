@@ -750,7 +750,7 @@ def read_px_error(content_line,idx):
     px,py: np.arrays
         read pixel reprojection error in x and y direction
     """
-    pts_array = np.array(content)[idx]
+    pts_array = np.array(content_line)[idx]
     pts = np.char.split(pts_array,', ')
     px = np.array([np.float(x[0]) for x in pts])
     py = np.array([np.float(x[1]) for x in pts])
@@ -798,7 +798,8 @@ def camera_reprojection_error_stats_df(pixel_error_fn):
         # cameras can be of three types, pinhole tsai, rpc embedded in tif or standalone as xml
         if any(substring in line for substring in ['tif','tsai','.xml']):
             camera_indices.append(idx)
-    print(f"Total number of cameras are {len(camera_indices)}")
+    n_cam = len(camera_indices)
+    print(f"Total number of cameras are {n_cam}")
     
     # read indices (line numbers) of pixel points for each camera
     pts_indices = []
@@ -809,7 +810,7 @@ def camera_reprojection_error_stats_df(pixel_error_fn):
             pts_indices.append(np.arange(cam_idx+1,len(content)))
     
     # compute statistics for all pixels in 1 camera, in parallel
-    stats_list = p_map(compute_cam_px_reproj_err_stats,content,pts_indices)
+    stats_list = p_map(compute_cam_px_reproj_err_stats,[content]*n_cam,pts_indices)
     
     # compose dataframe based on the returned list of dictionaries
     stats_df = pd.DataFrame(stats_list)
