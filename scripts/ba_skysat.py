@@ -55,7 +55,7 @@ def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_we
     ba_opt.extend(['--min-triangulation-angle', '0.0001'])
     ba_opt.extend(['--save-cnet-as-csv'])
     ba_opt.extend(['--individually-normalize'])
-    ba_opt.extend(['--robust-threshold', '10'])
+    ba_opt.extend(['--robust-threshold', '0.5'])
     if camera_weight:
         ba_opt.extend(['--camera-weight', str(camera_weight)])
     ba_opt.extend(['--translation-weight',str(translation_weight)])
