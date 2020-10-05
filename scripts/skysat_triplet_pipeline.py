@@ -55,7 +55,22 @@ def main():
     
     # step4 bundle_adjust dense matches
     init_ba = os.path.join(out_fol,ba_pinhole)
-  
+    
+    # step5 stereo_args
+    intermediate_ortho_dir = os.path.join(out_fol,'intermediate_pinhole_ortho')
+    final_stereo_dir = os.path.join(out_fol,'final_pinhole_stereo')
+
+    # step 6, dem gridding and mosaicing
+    mos_dem_dir = os.path.join(final_stereo_dir,'composite_dems')
+
+    # step 7. dem_alignment
+    
+    # step 8, camera alignment
+    
+    # step 9, final orthorectification
+    
+    # step 10, experimental rpc production
+    
     if args.full_workflow == 1:
          steps2run = np.arange(0,10) # run the entire 9 steps
     else:
@@ -91,7 +106,36 @@ def main():
         asp.run_cmd(stereo_cmd)
 
         # copy dense match file to ba directory
-        dense_match_cmd = ['prep_dense_ba_run.py','-img'python ~/sw/src/skysat_3d/scripts/prep_dense_ba_run.py -img in_img/ -orig_pickle proc_out_rainier_lidar/overlap_with_overlap_perc.pkl -stereo_dir proc_out_rainier_lidar/init_rpc_stereo/ -ba_dir proc_out_rainier_lidar/ba_pinhole  -modify_overlap 0
+        dense_match_cmd = ['prep_dense_ba_run.py','-img', img_folder, '-orig_pickle', overlap_stereo_pkl, '-stereo_dir', init_rpc_stereo, 
+                          '-ba_dir', init_ba, '-modify_overlap','0']
+        asp.run_cmd(dense_match_cmd)
+
    if 4 in steps2run:
+        # this is bundle adjustment step
+        # we use dense files copied from previous step
+        ba_cmd = ['ba_skysat.py', '-mode', 'full_triplet', '-t', 'nadirpinhole', 'img', img_folder, 
+                  '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, 'num_iter', '400', '-num_pass', '2','-ba_prefix',os.path.join(init_ba,'run-')]
+        asp.run_cmd(ba_cmd)
+   if 5 in steps2run:
+        # this is where stereo will take place
+        # first we orthorectify again
+        ortho_cmd = ['skysat_orthorectify.py', '-img_folder',img_folder,'-session',final_ortho_session,'-out_folder',intermediate_pin_ortho,
+                        '-tsrs',tsrs,'-DEM',refdem,'-mode','science','-orthomosaic','0','-data','triplet','-ba_prefix',os.path.join(init_ba,'run-run')]
+        asp.run_cmd(ortho_cmd)
+        # now run stereo
+        stereo_cmd = ['skysat_stereo_cli.py','-mode','triplet','-threads','2','-t','pinholemappinhole','-img',intermediate_pin_ortho,
+                     '-overlap_pkl',overlap_stereo_pkl,'-dem',refdem,'-block', '0', '-crop_map','1', '-outfol', final_stereo_dir, 
+                      '-ba_prefix',os.path.join(init_ba,'run-')]
+        asp.run_cmd(stereo_cmd)
+   
+    if 6 in steps2run:
+        pc_list = sorted(glob.glob(os.path.join(final_stereo_dir,'20*/2*/run-PC.tif'))) 
+        # this is dem gridding followed by mosaicing
+        dem_grid_cmd = ['skysat_pc_cam.py', '-mode','gridding_only', '-tr', '2', '-point_cloud_list', pc_list]
+        asp.run_cmd(dem_grid_cmd)
+        dem_mos_cmd = ['skysat_dem_mos.py','-mode','triplet','-DEM_folder',final_stereo_dir,'-out_folder',mos_dem_dir]
+        asp.run_cmd(dem_mos_cmd)
+    if 7 in steps2run:
+        # this is DEM alignment step
        # copy  dense match to ba directory
        
