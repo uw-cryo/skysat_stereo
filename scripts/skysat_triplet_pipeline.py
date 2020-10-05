@@ -64,11 +64,14 @@ def main():
     mos_dem_dir = os.path.join(final_stereo_dir,'composite_dems')
 
     # step 7. dem_alignment
-    
+    alignment_dir = os.path.join(out_fol,'georegistered_dem_mos')
+			
     # step 8, camera alignment
-    
+    aligned_cam_dir = os.path.join(out_fol,'georegistered_cameras')
+			
     # step 9, final orthorectification
-    
+    final_ortho_dir = os.path.join(out_fol,'georegisterd_orthomosaics')
+
     # step 10, experimental rpc production
     
     if args.full_workflow == 1:
@@ -114,7 +117,7 @@ def main():
         # this is bundle adjustment step
         # we use dense files copied from previous step
         ba_cmd = ['ba_skysat.py', '-mode', 'full_triplet', '-t', 'nadirpinhole', 'img', img_folder, 
-                  '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, 'num_iter', '400', '-num_pass', '2','-ba_prefix',os.path.join(init_ba,'run-')]
+                  '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, 'num_iter', '400', '-num_pass', '2','-ba_prefix',os.path.join(init_ba,'run')]
         asp.run_cmd(ba_cmd)
    if 5 in steps2run:
         # this is where stereo will take place
@@ -137,5 +140,21 @@ def main():
         asp.run_cmd(dem_mos_cmd)
     if 7 in steps2run:
         # this is DEM alignment step
-       # copy  dense match to ba directory
-       
+        median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'triplet_median_mos.tif'))[0]
+        dem_align_cmd = ['skysat_pc_cam.py','-mode','classic_dem_align','-max_displacement','100','-refdem',refdem,
+                         '-srcdem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run-')]
+        asp.run_cmd(dem_align_cmd)
+    if 8 in steps2run:
+        # this steps aligns the frame camera models
+        camera_list = sorted(glob.glob(os.path.join(init_ba,'run-run-*.tsai')))
+        alignment_vector = glob.glob(os.path.join(alignment_dir,'alignment_vector.txt'))[0]
+        camera_align_cmd = ['skysat_pc_cam.py','-mode','align_cameras','-transform',alignment_vector,
+                            '-cam_list',camera_list,'-outfol',aligned_cam_dir]
+        asp.run_cmd(camera_align_cmd)
+    if 9 in steps2run:
+        # this produces final georegistered orthomosaics
+        georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-DEM.tif'))[0]
+        ortho_cmd = ['skysat_orthorectify.py', '-img_folder',img_folder,'-session',final_ortho_session,'-out_folder',final_ortho_dir,
+                        '-tsrs',tsrs,'-DEM',georegistered_median_dem,'-mode','science','-orthomosaic','1','-data','triplet',
+		     '-ba_prefix',os.path.join(aligned_cam_dir,'run-run')]
+        asp.run_cmd(ortho_cmd)
