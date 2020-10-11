@@ -55,20 +55,22 @@ def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_we
     ba_opt.extend(['--min-triangulation-angle', '0.0001'])
     ba_opt.extend(['--save-cnet-as-csv'])
     ba_opt.extend(['--individually-normalize'])
-    ba_opt.extend(['--robust-threshold', '0.5'])
-    if camera_weight:
+    #ba_opt.extend(['--robust-threshold', '10'])
+    if camera_weight is not None:
         ba_opt.extend(['--camera-weight', str(camera_weight)])
-    ba_opt.extend(['--translation-weight',str(translation_weight)])
-    ba_opt.extend(['--rotation-weight',str(rotation_weight)])
+    else:
+        ba_opt.extend(['--translation-weight',str(translation_weight)])
+        ba_opt.extend(['--rotation-weight',str(rotation_weight)])
     if fixed_cam_idx is not None:
         ba_opt.extend(['--fixed-camera-indices',' '.join(fixed_cam_idx.astype(str))])
     ba_opt.extend(['-t', session])
-    ba_opt.extend(['--remove-outliers-params', '75 3 6 7'])
+    ba_opt.extend(['--remove-outliers-params', '75 3 5 6'])
     # How about adding num random passes here ? Think about it, it might help if we are getting stuck in local minima :)
     if session == 'nadirpinhole':
         ba_opt.extend(['--inline-adjustments'])
         ba_opt.extend(['--num-iterations', str(num_iterations)])
         ba_opt.extend(['--num-passes', str(num_pass)])
+    #ba_opt.extend(['--parameter-tolerance','1e-14'])
     # gcp_transform=True
     if gcp_transform:
         ba_opt.extend(['--transform-cameras-using-gcp'])
@@ -118,6 +120,8 @@ def getparser():
     parser.add_argument('-frame_index',default=None,help='subsampled frame_index.csv produced by preprocessing script (default: %(default)s)')
     parser.add_argument('-num_iter',default=2000,help='defualt number of iterations (default: %(default)s)')
     parser.add_argument('-num_pass',default=2,help='defualt number of solver passes, eliminating points with high reprojection error at each pass (default: %(default)s)')
+    camera_param_float_ch = ['trans+rot','rot_only']
+    parser.add_argument('-camera_param2float',type=str,default='trans+rot',choices=camera_param_float_ch,help='either float translation and rotation parameters freely, or enforce a higher tranlsation weight and allow free float of rotation parameters, incase the satellite positions are known accurately.')
     parser.add_argument('-dem',default=None,help='DEM to filter match points after optimization')
     parser.add_argument('-bound',default=None,help='Bound shapefile to limit extent of match points after optimization')
     return parser
@@ -159,6 +163,13 @@ def main():
         if bound.crs is not geo_crs:
            bound = bound.to_crs(geo_crs)
         lon_min,lat_min,lon_max,lat_max = bound.total_bounds
+    if args.camera_param2float == 'trans+rot':
+        cam_wt = 0
+    else:
+        # this will invoke adjustment with rotation weight of 0 and translation weight of 4
+        cam_wt = None
+    print(f"Camera weight is {cam_wt}")
+
     if args.dem:
         dem = iolib.fn_getma(args.dem)
         dem_stats = malib.get_stats_dict(dem)
@@ -179,7 +190,7 @@ def main():
         print(os.path.join(gcp,'*clean*_gcp.gcp'))
         gcp_list.append(glob.glob(os.path.join(gcp,'*clean*_gcp.gcp'))[0])
         round1_opts = get_ba_opts(
-            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter)
+            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,camera_weight=cam_wt)
         print("Running round 1 bundle adjustment for input video sequence")
         if session == 'nadirpinhole':
             ba_args = img_list+cam_list
@@ -195,7 +206,7 @@ def main():
             print(len(cam_list))
             ba_args = img_list+cam_list+gcp_list
             round2_opts = get_ba_opts(
-                ba_prefix, overlap_limit = overlap_limit, flavor='2round_gcp_2', session=session, gcp_transform=True)
+                ba_prefix, overlap_limit = overlap_limit, flavor='2round_gcp_2', session=session, gcp_transform=True,camera_weight=cam_wt)
         else:
             # round 1 is adjust file
             input_adjustments = ba_prefix
@@ -209,15 +220,16 @@ def main():
             print(
                 "Attempted bundle adjust will be expensive, will try to find matches in each and every pair")
         # the concept is simple
-        #first 2 cameras, and then corresponding first two cameras from next collection are fixed in the first go
+        #first 3 cameras, and then corresponding first three cameras from next collection are fixed in the first go
         # these serve as a kind of #GCP, preventing a large drift in the triangulated points/camera extrinsics during optimization
         img_time_identifier_list = np.array([os.path.basename(img).split('_')[1] for img in img_list])
         img_time_unique_list = np.unique(img_time_identifier_list)
         second_collection_list = np.where(img_time_identifier_list == img_time_unique_list[1])[0][[0,1,2]]
         fix_cam_idx = np.array([0,1,2]+list(second_collection_list))
         print(type(fix_cam_idx)) 
+      
         round1_opts = get_ba_opts(
-            ba_prefix, session=session,num_iterations=args.num_iter,num_pass=args.num_pass,fixed_cam_idx=fix_cam_idx,overlap_list=args.overlap_list)
+            ba_prefix, session=session,num_iterations=args.num_iter,num_pass=args.num_pass,fixed_cam_idx=fix_cam_idx,overlap_list=args.overlap_list,camera_weight=cam_wt)
             # enter round2_opts here only ?
         if session == 'nadirpinhole':
             ba_args = img_list+ cam_list
@@ -235,7 +247,7 @@ def main():
             cam_list = sorted(glob.glob(os.path.join(ba_prefix+ '-{}*.tsai'.format(identifier))))
             ba_args = img_list+cam_list
             fixed_cam_idx2 = np.delete(np.arange(len(img_list),dtype=int),fix_cam_idx)
-            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fixed_cam_idx2)
+            round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fixed_cam_idx2,camera_weight=cam_wt)
         else:
             # round 1 is adjust file
             input_adjustments = ba_prefix
