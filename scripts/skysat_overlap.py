@@ -83,7 +83,8 @@ def main():
     out_fn_stereo = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.pkl'
     stereo_only_df = skysat.prep_trip_df(out_fn_overlap)
     stereo_only_df.to_pickle(out_fn_stereo)
-    print("Saving overlap with stereo pairs only")
+    out_fn_stereo_ba = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.txt'
+    stereo_only_df[['img1','img2']].to_csv(out_fn_stereo_ba,sep=' ',header=False,index=False)
     print('Script completed in time {} s!'.format(time.time()-init_time))
 
 if __name__=="__main__":
