@@ -159,7 +159,7 @@ def main():
         # now run stereo
         stereo_cmd = ['skysat_stereo_cli.py','-mode','triplet','-threads','2','-t',final_stereo_session,'-img',final_stereo_input_img_folder,
                      '-overlap_pkl',overlap_stereo_pkl,'-dem',refdem,'-block', '0', '-crop_map','1', '-outfol', final_stereo_dir, 
-                      '-ba_prefix',ba_prefix+'-run']
+                      '-ba_prefix',ba_prefix+'-run','-block',args.block_matching]
         asp.run_cmd(stereo_cmd)
    
     if 6 in steps2run:
