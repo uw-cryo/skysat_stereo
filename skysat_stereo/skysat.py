@@ -786,9 +786,9 @@ def filter_video_dem_by_nmad(ds_list,min_count=2,max_nmad=5):
     -----------
     dem_filt: masked array
         filtered DEM
-    nmad_filt_c: masked array
-        filtered NMAD map
     count_filt_c: masked array
+        filtered NMAD map
+    nmad_filt_c: masked array
         filtered count map
     """
 
@@ -797,9 +797,10 @@ def filter_video_dem_by_nmad(ds_list,min_count=2,max_nmad=5):
     nmad = iolib.ds_getma(ds_list[2])
     
     nmad_filt = np.ma.masked_where(nmad>5,nmad)
-    count_filt = np.ma.masked_where(count<2,count)
-    valid_mask = malib.common_mask([nmad_filt,count_filt])
-    nmad_filt_c = np.ma.array(nmad_filt,mask = valid_mask)
-    count_filt_c = np.ma.array(count_filt,mask = valid_mask)
-    dem_filt = np.ma.array(dem,mask = valid_mask)
-    return dem_filt,nmad_filt_c,count_filt_c
+    count_filt = np.ma.masked_where(count<=2,count)
+    print(type(nmad_filt.mask))
+    invalid_mask = np.logical_and(nmad_filt.mask,count_filt.mask)
+    nmad_filt_c = np.ma.array(nmad_filt,mask = invalid_mask)
+    count_filt_c = np.ma.array(count_filt,mask = invalid_mask)
+    dem_filt = np.ma.array(dem,mask = invalid_mask)
+    return dem_filt,count_filt_c,nmad_filt_c

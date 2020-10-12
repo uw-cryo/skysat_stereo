@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 import numpy as np
-from pygeotools.lib import iolib,geolib
+from pygeotools.lib import iolib,geolib,malib
 import os,sys,glob,shutil
 import pandas as pd
 import geopandas as gpd
@@ -9,6 +9,7 @@ from rpcm import rpc_from_geotiff
 from distutils.spawn import find_executable
 import subprocess
 import ast
+from p_tqdm import p_map
 
 def run_cmd(bin, args, **kw):
     """
@@ -193,6 +194,7 @@ def clean_gcp(gcp_list,outdir):
     gcp_df = pd.concat(df_list, ignore_index=True)
     gcp_df[7] = gcp_df.apply(clean_img_in_gcp,axis=1)
     gcp_df[0] = np.arange(len(gcp_df))
+    print(f"Total number of GCPs found {len(gcp_df)}")
     gcp_df.to_csv(os.path.join(outdir,'clean_gcp.gcp'),sep = ' ',index=False,header=False)
     gcp_df.to_csv(os.path.join(outdir,'clean_gcp.csv'),sep = ' ',index=False)
 
@@ -733,3 +735,92 @@ def align_cameras(pinhole_tsai, transform, outfolder='None',write=True, rpc=Fals
         run_cmd('cam2rpc', cam2rpc_opts + cam2rpc_args)
     out = [cam_cen_adj, cam_rotation_adj]
     return out
+
+def read_px_error(content_line,idx):
+    """
+    Read pixel reprojection error from a text line parsed from ASP bundle_adjust output
+    Parameters
+    -----------
+    content_line: list
+        list of str, each string containing 1 line contents of run-final_residuals_no_loss_function_raw_pixels.txt
+    idx: np.array
+        point indices for which reprojection error needs to be read
+    Returns
+    -----------
+    px,py: np.arrays
+        read pixel reprojection error in x and y direction
+    """
+    pts_array = np.array(content_line)[idx]
+    pts = np.char.split(pts_array,', ')
+    px = np.array([np.float(x[0]) for x in pts])
+    py = np.array([np.float(x[1]) for x in pts])
+    return px,py
+
+def compute_cam_px_reproj_err_stats(content_line,idx):
+    """
+    Compute discriptive pixel reprojection error stats for all points in a given camera and return as dict
+    Parameters
+    -----------
+    content_line: list
+        list of str, each string containing 1 line contents of run-final_residuals_no_loss_function_raw_pixels.txt
+    idx: np.array
+        point indices for which reprojection error needs to be read
+    Returns
+    -----------
+    stats: dictionary
+        cumulative descriptive stats for all pixels viewed from a given camera
+    """
+    px,py = read_px_error(content_line,idx)
+    stats = malib.get_stats_dict(np.sqrt(px**2+py**2),full=True)
+    return stats
+
+def camera_reprojection_error_stats_df(pixel_error_fn):
+    """
+    Return dataframe of descriptive stats for pixel reprojection errors corresponding to each camera
+    Parameters
+    ------------
+    pixel_error_fn: str
+        path to run-final_residuals_no_loss_function_raw_pixels.txt or similar, written by ASP bundle_adjust
+    Returns
+    ------------
+    stats_df: Dataframe
+        descriptive stats for pixel reprojection errors for each camera
+    """
+    # read the text file, line by line
+    with open(pixel_error_fn,'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    
+    # compute position of camera filename
+    camera_indices = []
+
+    for idx,line in enumerate(content):
+        # cameras can be of three types, pinhole tsai, rpc embedded in tif or standalone as xml
+        if any(substring in line for substring in ['tif','tsai','.xml']):
+            camera_indices.append(idx)
+    n_cam = len(camera_indices)
+    print(f"Total number of cameras are {n_cam}")
+    
+    # read indices (line numbers) of pixel points for each camera
+    pts_indices = []
+    for idx,cam_idx in enumerate(camera_indices):
+        if idx != len(camera_indices)-1:
+            pts_indices.append(np.arange(cam_idx+1,camera_indices[idx+1]))
+        else:
+            pts_indices.append(np.arange(cam_idx+1,len(content)))
+    
+    # compute statistics for all pixels in 1 camera, in parallel
+    stats_list = p_map(compute_cam_px_reproj_err_stats,[content]*n_cam,pts_indices)
+    
+    # compose dataframe based on the returned list of dictionaries
+    stats_df = pd.DataFrame(stats_list)
+    
+    # assign input camera name 
+    cam_names = np.array(content)[camera_indices]
+    temp_cam = np.char.split(np.array(content)[camera_indices],', ')
+    stats_df['camera'] = np.array([os.path.basename(x[0]) for x in temp_cam])
+    
+    # dataframe is good to go
+    return stats_df
+
+

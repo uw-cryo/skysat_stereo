@@ -67,6 +67,7 @@ def main():
         out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
         frame_index = [args.frame_index]*n
        	camera = [None]*n
+        gcp_factor = 4
 
     elif mode == 'triplet':
         df = pd.read_pickle(args.overlap_pkl)
@@ -83,6 +84,7 @@ def main():
         camera = cam_list
         frame_index = [None]*n
         img_list = cam_list
+        gcp_factor = 8
     fl = [553846.153846]*n
     cx = [1280]*n
     cy = [540]*n
@@ -95,6 +97,8 @@ def main():
     #n_proc = cpu_count()
     cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index,num_cpus = n_proc)
     print("writing gcp with basename removed")
+    # count expexted gcp 
+    print(f"Total expected GCP {gcp_factor*n}")    
     asp.clean_gcp(out_gcp,outdir)
     # saving subprocess consolidated log file
     from datetime import datetime
