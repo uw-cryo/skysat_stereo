@@ -590,10 +590,12 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         source = True
         pc_align_args = [ref_dem, source_dem]
         pc_id = 'trans_source.tif'
+        pc_align_vec = '-transform.txt'
     else:
         source = False
         pc_align_args = [source_dem, ref_dem]
         pc_id = 'trans_reference.tif'
+        pc_align_vec = '-inverse-transform.txt'
     print("Aligning clouds via the {} method".format(align))
 
     pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only)
@@ -607,20 +609,26 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
     try:
         pc = glob.glob(outprefix + '*'+pc_id)[0]
         pc_log = sorted(glob.glob(outprefix+'*'+'log-pc_align*.txt'))[-1] # this will hopefully pull out latest transformation log
-        max_disp = get_total_shift(pc_log)
-        print("Maximum displacement is {}".format(mas_disp))
-        if max_disp <= 2*max_displacement:
-            grid = True
-        else:
-           grid = False
     except:
+        print("Failed to find aligned point cloud file")
+        sys.exit()
+    max_disp = get_total_shift(pc_log)
+    print("Maximum displacement is {}".format(max_disp))
+    if max_disp <= 2*max_displacement:
+        grid = True
+    else:
         grid = False
-        pass
+    
     if grid == True:
         point2dem_opts = get_point2dem_opts(tr, tsrs)
         point2dem_args = [pc]
         print("Saving aligned reference DEM at {}-DEM.tif".format(os.path.splitext(pc)[0]))
         p2dem_log = run_cmd('point2dem', point2dem_opts + point2dem_args)
+        # create alignment vector with consistent name of alignment vector for camera alignment
+        final_align_vector = os.path.join(os.path.dirname(outprefix),'alignment_vector.txt')
+        pc_align_vec = glob.glob(os.path.join(outprefix+pc_align_vec))[0]
+        print("Creating DEM alignment vector at {final_align_vector}")
+        shutil.copy2(pc_align_vec,final_align_vector)
         print(p2dem_log)
     elif grid == False:
         print("aligned cloud not produced or the total shift applied to cloud is greater than 2 times the max_displacement specified, gridding abandoned")
