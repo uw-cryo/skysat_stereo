@@ -35,6 +35,16 @@ def main():
         ortho_dem = args.orthodem
     else:
         ortho_dem = coreg_dem
+    # Check for input files
+    img_list = glob.glob(os.path.join(img_folder,'*.tif'))+glob.glob(os.path.join(img_folder,'*.tiff'))
+    if len(img_list)<2:
+        print(f"Only {len(img_list)} images detected, exiting")
+    if not os.path.exists(coreg_dem):
+        print(f"Coreg dem {coreg_dem} could not be located, exiting")
+    if not os.path.exists(ortho_dem):
+        print(f"Ortho dem {ortho_dem} could not be located, exiting")
+    
+    # structure for output folder
     out_fol = os.path.join(args.outfolder,'proc_out')
     job_name = args.job_name
     
@@ -100,6 +110,8 @@ def main():
     # create output directory
     if not os.path.exists(out_fol):
         os.makedirs(out_fol)
+
+
     if 1 in steps2run:
         print("Computing overlapping pairs")
         # Step 1 Compute overlapping pairs
@@ -129,6 +141,7 @@ def main():
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:
         ortho_dem = coreg_dem
+
 
     if 2 in steps2run:
         print("Generating Frame Cameras")
@@ -160,6 +173,7 @@ def main():
                           '-ba_dir', init_ba, '-modify_overlap','0']
         asp.run_cmd('prep_dense_ba_run.py',dense_match_cmd)
 
+
     if 4 in steps2run:
         # this is bundle adjustment step
         # we use dense files copied from previous step
@@ -168,6 +182,8 @@ def main():
                   '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, '-num_iter', '700', '-num_pass', '2','-ba_prefix',ba_prefix]
         print("running bundle adjustment")
         asp.run_cmd('ba_skysat.py',ba_cmd)
+
+
     if 5 in steps2run:
         # this is where final stereo will take place
         # first we orthorectify again, if map = True
@@ -185,8 +201,10 @@ def main():
                       '-ba_prefix',ba_prefix+'-run','-block',str(args.block_matching)]
         print("Running final stereo reconstruction")
         asp.run_cmd('skysat_stereo_cli.py',stereo_cmd)
+
    
     if 6 in steps2run:
+
         pc_list = sorted(glob.glob(os.path.join(final_stereo_dir,'20*/2*/run-PC.tif'))) 
         print(f"Identified {len(pc_list)} clouds")
         # this is dem gridding followed by mosaicing
@@ -196,11 +214,16 @@ def main():
         print("Mosaicing DEMs")
         dem_mos_cmd = ['-mode','triplet','-DEM_folder',final_stereo_dir,'-out_folder',mos_dem_dir]
         asp.run_cmd('skysat_dem_mos.py',dem_mos_cmd)
+
+
     if 7 in steps2run:
+
         # this is DEM alignment step
         # add option to mask coreg_dem for static surfaces
         # might want to remove glaciers, forest et al. before coregisteration
         # this can potentially be done in asp_utils step
+        # actually use dem_mask.py with options of nlcd, nlcd_filter (not_forest) and of course RGI glacier polygons
+
         median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'triplet_median_mos.tif'))[0]
         dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','100','-refdem',coreg_dem,
                          '-source_dem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run')]
