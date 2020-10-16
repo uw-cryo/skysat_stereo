@@ -18,7 +18,9 @@ dependencies:
  # misc
  - pip
  - pip:
-  # misc
+   # rotation_matrices
+   - pyquaternion
+   # misc
    - p_tqdm
    # geospatial+plotting
    - "--editable=git+https://github.com/dshean/pygeotools.git#egg=pygeotools"
