@@ -224,7 +224,14 @@ def main():
         # might want to remove glaciers, forest et al. before coregisteration
         # this can potentially be done in asp_utils step
         # actually use dem_mask.py with options of nlcd, nlcd_filter (not_forest) and of course RGI glacier polygons
-
+        if args.mask_dem == 1: 
+            # this might change for non-US sites, best to use bareground files
+            mask_dem_cmd = ['--nlcd','--nlcd_filter','rock','--glaciers']
+            print("Masking reference DEM to static surfaces") 
+            asp.run_cmd('dem_mask.py',mask_dem_cmd+[os.path.abspath(coreg_dem)])
+            coreg_dem = os.path.splitext(coreg_dem)[0]+'_ref.tif'
+        
+        #now perform alignment
         median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'triplet_median_mos.tif'))[0]
         dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','100','-refdem',coreg_dem,
                          '-source_dem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run')]
