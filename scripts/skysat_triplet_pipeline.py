@@ -17,6 +17,7 @@ def getparser():
     parser.add_argument('-in_img',default=None,type=str,help='path to Folder containing L1B imagery')
     parser.add_argument('-orthodem',default=None,type=str,help='path to Reference DEM to use in orthorectification and camera resection, if not provided, will use coregdem')
     parser.add_argument('-coregdem',default=None,type=str,help='path to reference DEM to use in coregisteration')
+    parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s'))
     parser.add_argument('-ortho_workflow',default=1,type=int,choices=[1,0],help='option to orthorectify before stereo or not')
     parser.add_argument('-block_matching',default=0,type=int,choices=[1,0],help='whether to use block matching in final stereo matching, default is 0 (not)')
     parser.add_argument('-job_name',default=None,type=str,help='identifier for output folder and final composite products')
