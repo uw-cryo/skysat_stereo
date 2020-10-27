@@ -24,7 +24,7 @@ def run_cmd(bin, args, **kw):
     if binpath is None:
         msg = ("Unable to find executable %s\n"
         "Install ASP and ensure it is in your PATH env variable\n"
-       "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
+       "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/")
         sys.exit(msg)
     # binpath = os.path.join('/opt/StereoPipeline/bin/',bin)
     call = [binpath, ]
@@ -189,8 +189,13 @@ def main():
         #also append the clean gcp here
         print(os.path.join(gcp,'*clean*_gcp.gcp'))
         gcp_list.append(glob.glob(os.path.join(gcp,'*clean*_gcp.gcp'))[0])
+        # this attempt did not work here
+        # but given videos small footprint, the median (scale)+trans+rotation is good enough for all terrain
+        # so reverting back to them
+        #stereo_baseline = 10
+        #fix_cam_idx = np.array([0]+[0+stereo_baseline])
         round1_opts = get_ba_opts(
-            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,camera_weight=cam_wt)
+            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,camera_weight=cam_wt,fixed_cam_idx=None)
         print("Running round 1 bundle adjustment for input video sequence")
         if session == 'nadirpinhole':
             ba_args = img_list+cam_list
@@ -198,15 +203,34 @@ def main():
             ba_args = img_list
         # Check if this command executed till last
         print('Running bundle adjustment round1')
-        #run_cmd('bundle_adjust', round1_opts+ba_args)
+        run_cmd('bundle_adjust', round1_opts+ba_args)
+       
+        # Make files used to evaluate solution quality
+        init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv'))[0]
+        init_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*initial_residuals_no_loss_function_raw_pixels.txt'))[0]
+        init_per_cam_reproj_err_disk = os.path.splitext(init_per_cam_reproj_err)[0]+'_initial_per_cam_reproj_error.txt'
+        init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
+        shutil.copy2(init_residual_fn_def,init_residual_fn)
+        shutil.copy2(init_per_cam_reproj_err,init_per_cam_reproj_err_disk)
+        # Copy final reprojection error files before transforming cameras
+        final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*no_loss_*pointmap*.csv'))[0]
+        final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
+        final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals_no_loss_function_raw_pixels.txt'))[0]
+        final_per_cam_reproj_err_disk = os.path.splitext(final_per_cam_reproj_err)[0]+'_final_per_cam_reproj_error.txt'
+        shutil.copy2(final_residual_fn_def,final_residual_fn)
+        shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
+
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split(df.name.values[0])[0]
             print(ba_prefix+identifier+'-{}*.tsai'.format(df.name.values[0]))
             cam_list = [glob.glob(ba_prefix+identifier+'-{}*.tsai'.format(img))[0] for img in df.name.values]
             print(len(cam_list))
             ba_args = img_list+cam_list+gcp_list
+            
+            #fixed_cam_idx2 = np.delete(np.arange(len(img_list),dtype=int),fix_cam_idx)
             round2_opts = get_ba_opts(
-                ba_prefix, overlap_limit = overlap_limit, flavor='2round_gcp_2', session=session, gcp_transform=True,camera_weight=cam_wt)
+                ba_prefix, overlap_limit = overlap_limit, flavor='2round_gcp_2', session=session, gcp_transform=True,camera_weight=0,
+                num_iterations=0,num_pass=1)
         else:
             # round 1 is adjust file
             input_adjustments = ba_prefix
@@ -215,6 +239,7 @@ def main():
             ba_args = img_list+gcp_list
         print("running round 2 bundle adjustment for input video sequence")
         run_cmd('bundle_adjust', round2_opts+ba_args)
+        
     elif mode == 'full_triplet':
         if args.overlap_list is None:
             print(
@@ -240,7 +265,10 @@ def main():
         # Save the first and foremost bundle adjustment reprojection error file
         init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv'))[0]
         init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
+        init_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*initial_residuals_no_loss_function_raw_pixels.txt'))[0]
+        init_per_cam_reproj_err_disk = os.path.splitext(init_per_cam_reproj_err)[0]+'_initial_per_cam_reproj_error.txt'
         shutil.copy2(init_residual_fn_def,init_residual_fn)
+        shutil.copy2(init_per_cam_reproj_err,init_per_cam_reproj_err_disk)
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split('_',14)[0][:2]
             print(ba_prefix+'-{}*.tsai'.format(identifier))
@@ -259,6 +287,10 @@ def main():
         final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*no_loss_*pointmap*.csv'))[0]
         final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
         shutil.copy2(final_residual_fn_def,final_residual_fn)
+        final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals_no_loss_function_raw_pixels.txt'))[0]
+        final_per_cam_reproj_err_disk = os.path.splitext(final_per_cam_reproj_err)[0]+'_final_per_cam_reproj_error.txt'
+        shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
+
         # input is just a transform from pc_align or something similar with no optimization
         if mode == 'transform_pc_align':
             if session == 'nadirpinhole':
