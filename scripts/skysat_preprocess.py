@@ -18,7 +18,7 @@ def getparser():
     parser.add_argument('-t',default='pinhole',choices=session_choices,help='choose between pinhole and rpc mode (default: %(default)s)')
     parser.add_argument('-img',default=None,help='folder containing images',required=True)
     sampling_mode_choices = ['sampling_interval', 'num_images']
-    parser.add_argument('-video_sampling_mode', default = 'sampling_interval', choices = sampling_mode_choices, required = False, help = 'Chose desired sampling procedure, either fixed sampling interval or by equally distributed user defined number of samples (default: %(default)s)')
+    parser.add_argument('-video_sampling_mode', default = 'num_images', choices = sampling_mode_choices, required = False, help = 'Chose desired sampling procedure, either fixed sampling interval or by equally distributed user defined number of samples (default: %(default)s)')
     parser.add_argument('-sampler',default = 5 ,type = int, help = 'if video_sampling_mode: sampling_interval, this is the sampling interval, else this is the number of samples to be selected (default: %(default)s)')
     parser.add_argument('-outdir', default = None, required = True, help = 'Output folder to save cameras and GCPs')
     parser.add_argument('-frame_index',default=None,help='Frame index csv file provided with L1A video products, will be used for determining stereo combinations')

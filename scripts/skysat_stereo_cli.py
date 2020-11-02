@@ -35,7 +35,8 @@ def getparser():
     mvs_choices = [1, 0]
     parser.add_argument('-mvs', default=0, type=int, choices=mvs_choices, help='1: Use multiview stereo triangulation for video data, do matching with next 20 slave for each master image/camera (defualt: %(default)s')
     parser.add_argument('-block', default=0, type=int, choices=mvs_choices, help='1: use block matching instead of default MGM (default: %(default)s')
-    parser.add_argument('-full_extent',type=int,choices = mvs_choices,default=0,help='Selecting larger intervals can result in lower footprint output DEM, if 1: then DEMs with smaller interval image pairs will be padded at the begining and end of the video sequence (default: %(default)s)')
+    parser.add_argument('-full_extent',type=int,choices = mvs_choices,default=1,
+                        help='Selecting larger intervals can result in lower footprint output DEM, if 1: then DEMs with smaller interval image pairs will be padded at the begining and end of the video sequence (default: %(default)s)')
     return parser
 
 def main():
