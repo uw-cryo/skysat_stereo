@@ -250,8 +250,10 @@ def main():
 
         # now perform alignment
         median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'video_median_mos.tif'))[0]
+        # use the composite filtered by count and NMAD metrics
+        median_mos_dem_filt = glob.glob(os.path.join(mos_dem_dir,'video_median_mos_filt*.tif'))[0]
         dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','100','-refdem',coreg_dem,
-                         '-source_dem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run')]
+                         '-source_dem',median_mos_dem_filt,'-outprefix',os.path.join(alignment_dir,'run')]
         print("Aligning DEMs")
         asp.run_cmd('skysat_pc_cam.py',dem_align_cmd)
 
