@@ -18,7 +18,7 @@ This project is under active development and we welcome contributions (informati
 
 #### [scripts](/scripts/) - command line utilities for the SkySat processing workflow.
 1. [`skysat_overlap.py`](/scripts/skysat_overlap.py) - identifies overlapping scenes
-2. [`skysat_preprocess.py`](/scripts/skysat_preprocess.py) - prepares subset of video scenes, generates frame camera models
+2. [`skysat_preprocess.py`](/scripts/skysat_preprocess.py) - prepares subset of video scenes, generates [frame camera models](/docs/sample_camera_models/)
 3. [`ba_skysat.py`](/scripts/ba_skysat.py) - bundle adjustment and camera refinement
 4. [`skysat_stereo_cli.py`](/scripts/skysat_stereo_cli.py) - stereo reconstruction
 5. [`skysat_dem_mos.py`](/scripts/skysat_dem_mos.py) - generates DEM composites with relative accuracy and count metrics
