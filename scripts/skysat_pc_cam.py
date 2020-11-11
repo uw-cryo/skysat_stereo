@@ -5,7 +5,7 @@ import numpy as np
 from skysat_stereo import asp_utils as asp
 from skysat_stereo import skysat
 from p_tqdm import p_map,p_umap
-from multiprocessing import cpu_count
+import psutil
 import argparse
 from rpcm import geo
 from pygeotools.lib import iolib,geolib
@@ -44,6 +44,9 @@ def get_parser():
 def main():
     parser = get_parser()
     args = parser.parse_args()
+    # comput number of physical and threaded cores
+    n_cpu = psutil.cpu_count(logical=False)
+    n_cpu_thread = psutil.cpu_count(logical=True)
     mode = args.mode
     pc_list = args.point_cloud_list
     if mode == 'gridding_only':
@@ -60,9 +63,9 @@ def main():
            print(f"Detected EPSG code from point cloud {epsg_code}") 
            tsrs = epsg_code
      
-        point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs)
+        point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs,threads=1)
         job_list = [point2dem_opts + [pc] for pc in pc_list]
-        p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = cpu_count())
+        p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
         print(p2dem_log)
     if mode == 'classic_dem_align':
         ref_dem=args.refdem
@@ -74,7 +77,7 @@ def main():
             trans_only=False
         else:
             trans_only=True
-        asp.dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only)
+        asp.dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only,threads=n_cpu)
     if mode == 'multi_align':
         """ Align multiple DEMs to a single source DEM """
         ref_dem=args.refdem
@@ -91,7 +94,7 @@ def main():
         max_disp_list=[max_displacement] * n_source
         align_list=[align] * n_source
         trans_list=[trans_only] * n_source
-        p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,align_list,trans_list,num_cpus = cpu_count())
+        p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,align_list,trans_list,[1]*n_source,num_cpus = n_cpu_thread)
     if mode == 'align_cameras':
         transform_txt = args.transform
         input_camera_list = args.cam_list
@@ -113,7 +116,7 @@ def main():
         write=[True] * n_cam
         rpc=[rpc] * n_cam
         dem=[dem] * n_cam
-        p_umap(asp.align_cameras,input_camera_list,transform_list,outfolder,write,rpc,dem,img_list,num_cpus = cpu_count())
+        p_umap(asp.align_cameras,input_camera_list,transform_list,outfolder,write,rpc,dem,img_list,num_cpus = n_cpu_thread)
 
 if __name__=="__main__":
     main()

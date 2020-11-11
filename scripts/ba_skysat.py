@@ -41,52 +41,84 @@ def run_cmd(bin, args, **kw):
         raise Exception('ASP step ' + kw['msg'] + ' failed')
 
 
-def get_ba_opts(ba_prefix, camera_weight=None,translation_weight=0.4,rotation_weight=0,fixed_cam_idx=None,overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,num_pass=2,lon_lat_limit=None,elevation_limit=None):
+def get_ba_opts(ba_prefix, ip_per_tile=4000,camera_weight=None,translation_weight=0.4,rotation_weight=0,fixed_cam_idx=None,overlap_list=None, robust_threshold=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,num_pass=2,lon_lat_limit=None,elevation_limit=None):
     ba_opt = []
+    # allow CERES to use multi-threads
     ba_opt.extend(['--threads', str(cpu_count())])
+    #ba_opt.extend(['--threads', '1'])
     ba_opt.extend(['-o', ba_prefix])
+
+    # keypoint-finding args
+    # relax triangulation error based filters to account for initial camera errors
     ba_opt.extend(['--min-matches', '4'])
     ba_opt.extend(['--disable-tri-ip-filter'])
     ba_opt.extend(['--force-reuse-match-files'])
-    ba_opt.extend(['--ip-per-tile', '4000'])
+    ba_opt.extend(['--ip-per-tile', str(ip_per_tile)])
     ba_opt.extend(['--ip-inlier-factor', '0.2'])
     ba_opt.extend(['--ip-num-ransac-iterations', '1000'])
     ba_opt.extend(['--skip-rough-homography'])
     ba_opt.extend(['--min-triangulation-angle', '0.0001'])
+
+    # Save control network created from match points
     ba_opt.extend(['--save-cnet-as-csv'])
+
+    # Individually normalize images to properly stretch constrant 
+    # Helpful in keypoint detection
     ba_opt.extend(['--individually-normalize'])
-    #ba_opt.extend(['--robust-threshold', '10'])
+
+    if robust_threshold is not None:
+        # make the solver focus more on mininizing very high reporjection errors
+        ba_opt.extend(['--robust-threshold', str(robust_threshold)])
+
     if camera_weight is not None:
+        # this generally assigns weight to penalise movement of camera parameters (Default:0)
         ba_opt.extend(['--camera-weight', str(camera_weight)])
     else:
+        # this is more fine grained, will pinalize translation but allow rotation parameters update
         ba_opt.extend(['--translation-weight',str(translation_weight)])
         ba_opt.extend(['--rotation-weight',str(rotation_weight)])
+
     if fixed_cam_idx is not None:
+        # parameters for cameras at the specified indices will not be floated during optimisation
         ba_opt.extend(['--fixed-camera-indices',' '.join(fixed_cam_idx.astype(str))])
     ba_opt.extend(['-t', session])
+    
+    # filter points based on reprojection errors before running a new pass
     ba_opt.extend(['--remove-outliers-params', '75 3 5 6'])
+    
     # How about adding num random passes here ? Think about it, it might help if we are getting stuck in local minima :)
     if session == 'nadirpinhole':
         ba_opt.extend(['--inline-adjustments'])
-        ba_opt.extend(['--num-iterations', str(num_iterations)])
-        ba_opt.extend(['--num-passes', str(num_pass)])
+        # write out a new camera model file with updated parameters
+
+    # specify number of passes and maximum iterations per pass
+    ba_opt.extend(['--num-iterations', str(num_iterations)])
+    ba_opt.extend(['--num-passes', str(num_pass)])
     #ba_opt.extend(['--parameter-tolerance','1e-14'])
-    # gcp_transform=True
+
     if gcp_transform:
         ba_opt.extend(['--transform-cameras-using-gcp'])
-        # maybe add gcp arg here, can be added when function is called as well
+       
     if initial_transform:
         ba_opt.extend(['--initial-transform', initial_transform])
     if input_adjustments:
         ba_opt.extend(['--input-adjustments', input_adjustments])
+
+    # these 2 parameters determine which image pairs to use for feature matching
+    # only the selected pairs are used in formation of the bundle adjustment control network
+    # video is a sequence of overlapping scenes, so we use an overlap limit
+    # triplet stereo uses list of overlapping pairs
     if overlap_limit:
         ba_opt.extend(['--overlap-limit',str(overlap_limit)])
     if overlap_list:
         ba_opt.extend(['--overlap-list', overlap_list])
+   
+    # these two params are not used generally.
     if lon_lat_limit:
         ba_opt.extend(['--lon-lat-limit',str(lon_lat_limit[0]),str(lon_lat_limit[1]),str(lon_lat_limit[2]),str(lon_lat_limit[3])])
     if elevation_limit:
         ba_opt.extend(['--elevation-limit',str(elevation_limit[0]),str(elevation_limit[1])])
+
     return ba_opt
 
 
@@ -131,12 +163,15 @@ def main():
     parser = getparser()
     args = parser.parse_args()
     img = args.img
+    # populate image list
     img_list = sorted(glob.glob(os.path.join(img, '*.tif')))
     if len(img_list) < 2:
         img_list = sorted(glob.glob(os.path.join(img, '*.tiff')))
         #img_list = [os.path.basename(x) for x in img_list]
         if os.path.islink(img_list[0]):
             img_list = [os.readlink(x) for x in img_list]  
+
+    # populate camera model list
     if args.cam:
         cam = os.path.abspath(args.cam)
         if 'run' in os.path.basename(cam):
@@ -144,18 +179,26 @@ def main():
         else:
             cam_list = sorted(glob.glob(os.path.join(cam, '*.tsai')))
         cam_list = cam_list[:len(img_list)]
+
     session = args.t
+    
+    # output ba_prefix
     if args.ba_prefix:
-        ba_prefix = args.ba_prefix
+        ba_prefix = os.path.abspath(args.ba_prefix)
+
     if args.initial_transform:
         initial_transform = os.path.abspath(initial_transform)
     if args.input_adjustments:
         input_adjustments = os.path.abspath(input_adjustments)
+    
+    # triplet stereo overlap list
     if args.overlap_list:
         overlap_list = os.path.abspath(args.overlap_list)
+    
+    # Populate GCP list
     if args.gcp:
         gcp_list = sorted(glob.glob(os.path.join(args.gcp, '*.gcp')))
-    ba_prefix = os.path.abspath(args.ba_prefix)
+    
     mode = args.mode
     if args.bound:
         bound = gpd.read_file(args.bound)
@@ -163,39 +206,51 @@ def main():
         if bound.crs is not geo_crs:
            bound = bound.to_crs(geo_crs)
         lon_min,lat_min,lon_max,lat_max = bound.total_bounds
+   
+    # Select whether to float both translation/rotation, or only rotation
     if args.camera_param2float == 'trans+rot':
         cam_wt = 0
     else:
-        # this will invoke adjustment with rotation weight of 0 and translation weight of 4
+        # this will invoke adjustment with rotation weight of 0 and translation weight of 0.4
         cam_wt = None
     print(f"Camera weight is {cam_wt}")
-
+    
+    # not commonly used
     if args.dem:
         dem = iolib.fn_getma(args.dem)
         dem_stats = malib.get_stats_dict(dem)
         min_elev,max_elev = [dem_stats['min']-500,dem_stats['max']+500] 
+
     if mode == 'full_video':
+        # read subsampled frame index, populate gcp, image and camera models appropriately
         frame_index = args.frame_index
         df = pd.read_csv(frame_index)
         gcp = os.path.abspath(args.gcp)
+
+        # block to determine automatically overlap limit of 40 seconds for computing match points
         df['dt'] = [datetime.strptime(date.split('+00:00')[0],'%Y-%m-%dT%H:%M:%S.%f') for date in df.datetime.values]
         delta = (df.dt.values[1]-df.dt.values[0])/np.timedelta64(1, 's')
         # i hardocde overlap limit to have 40 seconds coverage
         overlap_limit = np.int(np.ceil(40/delta))
         print("Calculated overlap limit as {}".format(overlap_limit))
+
         img_list = [glob.glob(os.path.join(img,'*{}*.tiff'.format(x)))[0] for x in df.name.values]
         cam_list = [glob.glob(os.path.join(cam,'*{}*.tsai'.format(x)))[0] for x in df.name.values]
         gcp_list = [glob.glob(os.path.join(gcp,'*{}*.gcp'.format(x)))[0] for x in df.name.values]
         #also append the clean gcp here
         print(os.path.join(gcp,'*clean*_gcp.gcp'))
         gcp_list.append(glob.glob(os.path.join(gcp,'*clean*_gcp.gcp'))[0])
+
         # this attempt did not work here
         # but given videos small footprint, the median (scale)+trans+rotation is good enough for all terrain
         # so reverting back to them
         #stereo_baseline = 10
         #fix_cam_idx = np.array([0]+[0+stereo_baseline])
+        #ip_per_tile is switched to default, as die to high scene to scene overlap and limited perspective difference, this produces abundant matches
+
         round1_opts = get_ba_opts(
-            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,num_iterations=args.num_iter,camera_weight=cam_wt,fixed_cam_idx=None)
+            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,ip_per_tile=4000,
+            num_iterations=args.num_iter,num_pass=args.num_pass,camera_weight=cam_wt,fixed_cam_idx=None,robust_threshold=None)
         print("Running round 1 bundle adjustment for input video sequence")
         if session == 'nadirpinhole':
             ba_args = img_list+cam_list
@@ -221,6 +276,7 @@ def main():
         shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
 
         if session == 'nadirpinhole':
+            # prepare for second run to apply a constant transform to the self-consistent models using initial ground footprints
             identifier = os.path.basename(cam_list[0]).split(df.name.values[0])[0]
             print(ba_prefix+identifier+'-{}*.tsai'.format(df.name.values[0]))
             cam_list = [glob.glob(ba_prefix+identifier+'-{}*.tsai'.format(img))[0] for img in df.name.values]
@@ -262,6 +318,7 @@ def main():
             ba_args = img_list
         print("Running round 1 bundle adjustment for given triplet stereo combination")
         run_cmd('bundle_adjust', round1_opts+ba_args)
+
         # Save the first and foremost bundle adjustment reprojection error file
         init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv'))[0]
         init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
@@ -269,6 +326,7 @@ def main():
         init_per_cam_reproj_err_disk = os.path.splitext(init_per_cam_reproj_err)[0]+'_initial_per_cam_reproj_error.txt'
         shutil.copy2(init_residual_fn_def,init_residual_fn)
         shutil.copy2(init_per_cam_reproj_err,init_per_cam_reproj_err_disk)
+
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split('_',14)[0][:2]
             print(ba_prefix+'-{}*.tsai'.format(identifier))
@@ -278,18 +336,24 @@ def main():
             round2_opts = get_ba_opts(ba_prefix, overlap_list=overlap_list,session=session, fixed_cam_idx=fixed_cam_idx2,camera_weight=cam_wt)
         else:
             # round 1 is adjust file
+            # Only camera model parameters for the first three stereo pairs float in this round
             input_adjustments = ba_prefix
             round2_opts = get_ba_opts(
-                ba_prefix, overlap_limit, input_adjustments=ba_prefix, flavor='2round_gcp_2', session=session,elevation_limit=[min_elev,max_elev],lon_lat_limit=[lon_min,lat_min,lon_max,lat_max])
+                ba_prefix, overlap_limit, input_adjustments=ba_prefix, flavor='2round_gcp_2', session=session,
+                elevation_limit=[min_elev,max_elev],lon_lat_limit=[lon_min,lat_min,lon_max,lat_max])
             ba_args = img_list+gcp_list
+
         print("running round 2 bundle adjustment for given triplet stereo combination")
         run_cmd('bundle_adjust', round2_opts+ba_args)
+
+        # Save state for final condition reprojection errors for the sparse triangulated points
         final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*no_loss_*pointmap*.csv'))[0]
         final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
         shutil.copy2(final_residual_fn_def,final_residual_fn)
         final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals_no_loss_function_raw_pixels.txt'))[0]
         final_per_cam_reproj_err_disk = os.path.splitext(final_per_cam_reproj_err)[0]+'_final_per_cam_reproj_error.txt'
         shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
+
 
         # input is just a transform from pc_align or something similar with no optimization
         if mode == 'transform_pc_align':

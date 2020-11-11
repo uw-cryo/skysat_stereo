@@ -12,12 +12,15 @@ from skysat_stereo import asp_utils as asp
 Script for running the full pipeline based on workflow described in ISPRS 2020 submission
 Need to specify input image folder, input refrence DEM folder
 """
+#TODO:
+# Add an option of cleaning up the lots of intermediate files produced
+
 def getparser():
     parser = argparse.ArgumentParser(description='Wrapper script to run full triplet stereo workflow')
     parser.add_argument('-in_img',default=None,type=str,help='path to Folder containing L1B imagery')
     parser.add_argument('-orthodem',default=None,type=str,help='path to Reference DEM to use in orthorectification and camera resection, if not provided, will use coregdem')
     parser.add_argument('-coregdem',default=None,type=str,help='path to reference DEM to use in coregisteration')
-    parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s'))
+    parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s)')
     parser.add_argument('-ortho_workflow',default=1,type=int,choices=[1,0],help='option to orthorectify before stereo or not')
     parser.add_argument('-block_matching',default=0,type=int,choices=[1,0],help='whether to use block matching in final stereo matching, default is 0 (not)')
     parser.add_argument('-job_name',default=None,type=str,help='identifier for output folder and final composite products')
@@ -111,6 +114,18 @@ def main():
     # create output directory
     if not os.path.exists(out_fol):
         os.makedirs(out_fol)
+    
+    #copy reference DEM(s) to refdem directory
+    # if parallel runs on different nodes use the same DEM, then will have issues
+    refdem_dir = os.path.join(out_fol,'refdem')
+    if not os.path.exists(refdem_dir):
+        os.makedirs(refdem_dir)
+    shutil.copy2(coreg_dem,os.path.join(refdem_dir,os.path.basename(coreg_dem)))
+    if not coreg_dem == ortho_dem:
+        shutil.copy2(ortho_dem,os.path.join(refdem_dir,os.path.basename(ortho_dem)))
+    # replace old variable names
+    coreg_dem = os.path.join(refdem_dir,os.path.basename(coreg_dem))
+    ortho_dem = os.path.join(refdem_dir,os.path.basename(ortho_dem))
 
 
     if 1 in steps2run:
@@ -120,6 +135,7 @@ def main():
         overlap_perc = 0.01 # 1 percent essentially
         cmd = ['-img_folder',img_folder,'-percentage',str(overlap_perc),'-outfn',overlap_full_txt]
         asp.run_cmd('skysat_overlap.py',cmd)
+
     print("Computing Target UTM zones for orthorectification")
     gdf = gpd.read_file(bound_fn)
     clon,clat = [gdf.centroid.x.values,gdf.centroid.y.values]
@@ -149,6 +165,7 @@ def main():
         frame_cam_cmd = ['-mode','triplet','-t','rpc','-img',img_folder,'-outdir',cam_gcp_directory,
                     '-overlap_pkl',overlap_stereo_pkl,'-dem',ortho_dem]
         asp.run_cmd('skysat_preprocess.py',frame_cam_cmd)
+
     if 3 in steps2run:
         # specify whether to run using maprojected sessions or not
    
@@ -218,7 +235,6 @@ def main():
 
 
     if 7 in steps2run:
-
         # this is DEM alignment step
         # add option to mask coreg_dem for static surfaces
         # might want to remove glaciers, forest et al. before coregisteration
@@ -226,17 +242,18 @@ def main():
         # actually use dem_mask.py with options of nlcd, nlcd_filter (not_forest) and of course RGI glacier polygons
         if args.mask_dem == 1: 
             # this might change for non-US sites, best to use bareground files
-            mask_dem_cmd = ['--nlcd','--nlcd_filter','rock','--glaciers']
+            mask_dem_cmd = ['--nlcd','--glaciers']
             print("Masking reference DEM to static surfaces") 
             asp.run_cmd('dem_mask.py',mask_dem_cmd+[os.path.abspath(coreg_dem)])
             coreg_dem = os.path.splitext(coreg_dem)[0]+'_ref.tif'
         
         #now perform alignment
         median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'triplet_median_mos.tif'))[0]
-        dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','100','-refdem',coreg_dem,
+        dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','40','-refdem',coreg_dem,
                          '-source_dem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run')]
         print("Aligning DEMs")
         asp.run_cmd('skysat_pc_cam.py',dem_align_cmd)
+
     if 8 in steps2run:
         # this steps aligns the frame camera models
         camera_list = sorted(glob.glob(os.path.join(init_ba,'run-run-*.tsai')))
@@ -246,6 +263,7 @@ def main():
                             '-outfol',aligned_cam_dir,'-cam_list']+camera_list
         print("Aligning cameras")
         asp.run_cmd('skysat_pc_cam.py',camera_align_cmd)
+
     if 9 in steps2run:
         # this produces final georegistered orthomosaics
         georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]

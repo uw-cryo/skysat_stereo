@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 import numpy as np
 from pygeotools.lib import iolib,geolib,malib
-import os,sys,glob,shutil
+import os,sys,glob,shutil,psutil
 import pandas as pd
 import geopandas as gpd
 from pyproj import Proj, transform
@@ -10,6 +10,9 @@ from distutils.spawn import find_executable
 import subprocess
 import ast
 from p_tqdm import p_map
+
+n_cpu = psutil.cpu_count(logical=False)
+n_cpu_thread = psutil.cpu_count(logical=True)
 
 def run_cmd(bin, args, **kw):
     """
@@ -161,6 +164,7 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             cam_gen_opt.extend(['--parse-ecef'])
         cam_gen_opt.extend(['--refine-camera'])
         cam_gen_args = [img]
+        print(cam_gen_opt+cam_gen_args)
         out = run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
         return out
 
@@ -479,7 +483,7 @@ def convergence_angle(az1, el1, az2, el2):
     conv_ang = np.rad2deg(np.arccos(np.sin(np.deg2rad(el1)) * np.sin(np.deg2rad(el2)) + np.cos(np.deg2rad(el1)) * np.cos(np.deg2rad(el2)) * np.cos(np.deg2rad(az1 - az2))))
     return conv_ang
 
-def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, trans_only=False):
+def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, threads=n_cpu,trans_only=False):
     """
     prepares ASP pc_align ICP cmd
     See pc_align documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -493,6 +497,8 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
         ICP's alignment algorithm to use. default: point-to-plane
     source: bool
         if True, this tells the the algorithm to align the source to reference DEM/PC. If false, this tells the program to align reference to source and save inverse transformation. default: True
+    threads: int
+        number of threads to use for each stereo job
     trans_only: bool
         if True, this instructs the program to compute translation only when point cloud optimization. Default: False
 
@@ -506,6 +512,7 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
     pc_align_opts.extend(['--alignment-method', align])
     pc_align_opts.extend(['--max-displacement', str(max_displacement)])
     pc_align_opts.extend(['--highest-accuracy'])
+    pc_align_opts.extend(['--threads',str(threads)])
     if source:
         pc_align_opts.extend(['--save-transformed-source-points'])
     else:
@@ -515,7 +522,7 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
     pc_align_opts.extend(['-o', outprefix])
     return pc_align_opts
 
-def get_point2dem_opts(tr, tsrs):
+def get_point2dem_opts(tr, tsrs,threads=n_cpu):
     """
     prepares argument for ASP's point cloud gridding algorithm (point2dem) cmd
     Parameters
@@ -524,6 +531,8 @@ def get_point2dem_opts(tr, tsrs):
         target resolution of output DEM
     tsrs: str
         projection of output DEM
+    threads: int 
+        number of threads to use for each stereo job
 
     Returns
     ----------
@@ -534,6 +543,7 @@ def get_point2dem_opts(tr, tsrs):
     point2dem_opts = []
     point2dem_opts.extend(['--tr', str(tr)])
     point2dem_opts.extend(['--t_srs', tsrs])
+    point2dem_opts.extend(['--threads',str(threads)])
     point2dem_opts.extend(['--errorimage'])
     return point2dem_opts
 
@@ -557,7 +567,7 @@ def get_total_shift(pc_align_log):
     total_shift = np.float(max_alignment_string[0].split(':',15)[-1].split('m')[0])
     return total_shift
 
-def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False):
+def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False, threads=n_cpu):
     """
     This function implements the full DEM alignment workflow using ASP's pc_align and point2dem programs
     See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -575,6 +585,8 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         ICP's alignment algorithm to use. default: point-to-plane
     trans_only: bool
         if True, this instructs the program to compute translation only when point cloud optimization. Default: False
+    threads: int
+        number of threads to use for each stereo job
     """
     # this block checks wheter reference DEM is finer resolution or source DEM
     # if reference DEM is finer resolution, then source is aligned to reference
@@ -598,7 +610,7 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         pc_align_vec = '-inverse-transform.txt'
     print("Aligning clouds via the {} method".format(align))
 
-    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only)
+    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only,threads=threads)
     pc_align_log = run_cmd('pc_align', pc_align_opts + pc_align_args)
     print(pc_align_log)
     # this try, except block checks for 2 things.
@@ -620,7 +632,7 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         grid = False
     
     if grid == True:
-        point2dem_opts = get_point2dem_opts(tr, tsrs)
+        point2dem_opts = get_point2dem_opts(tr, tsrs,threads=threads)
         point2dem_args = [pc]
         print("Saving aligned reference DEM at {}-DEM.tif".format(os.path.splitext(pc)[0]))
         p2dem_log = run_cmd('point2dem', point2dem_opts + point2dem_args)
@@ -656,17 +668,22 @@ def get_cam2rpc_opts(t='pinhole', dem=None, gsd=None, num_samples=50):
 
     cam2rpc_opts = []
     cam2rpc_opts.extend(['--dem-file', dem])
-    dem_ds = iolib.fn_getds(dem)
-    dem_proj = dem_ds.GetProjection()
-    dem = iolib.ds_getma(dem_ds)
-    min_height, max_height = np.percentile(dem.compressed(), (0.01, 0.99))
-    tsrs = epsg2geolib(4326)
-    xmin, ymin, xmax, ymax = geolib.ds_extent(ds, tsrs)
-    cam2rpc_opts.extend(['--height-range', str(min_height), str(max_height)])
-    cam2rpc_opts.extend(['--lon-lat-range', str(xmin),
-                        str(ymin), str(xmax), str(ymax)])
+    cam2rpc_opts.extend(['--save-tif-image'])
+    
+    # these parameters are not required when providing a DEM
+    # the lon-lat range and height-range is not required when sampling points from a DEM
+    #dem_ds = iolib.fn_getds(dem)
+    #dem_proj = dem_ds.GetProjection()
+    #dem = iolib.ds_getma(dem_ds)
+    #min_height, max_height = np.percentile(dem.compressed(), (0.01, 0.99))
+    #tsrs = epsg2geolib(4326)
+    #xmin, ymin, xmax, ymax = geolib.ds_extent(ds, tsrs)
+    #cam2rpc_opts.extend(['--height-range', str(min_height), str(max_height)])
+    #cam2rpc_opts.extend(['--lon-lat-range', str(xmin),
+                        #str(ymin), str(xmax), str(ymax)])
     if gsd:
         cam2rpc_opts.extend(['--gsd', str(gsd)])
+
     cam2rpc_opts.extend(['--session', t])
     cam2rpc_opts.extend(['--num-samples', str(num_samples)])
     return cam2rpc_opts
