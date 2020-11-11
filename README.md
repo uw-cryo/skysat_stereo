@@ -25,7 +25,8 @@ This project is under active development and we welcome contributions (informati
 6. [`skysat_pc_cam.py`](/scripts/skysat_pc_cam.py) - point clouds gridding, DEM co-registration, export updated frame and RPC camera models
 7. [`skysat_orthorectify.py`](/scripts/skysat_orthorectify.py) - orthorectify individual scenes and produce orthoimage mosaics
 8. [`plot_disparity.py`](/scripts/plot_disparity.py) - visualize DEM, disparity map, stereo triangulation intersection error map
-
+9. [`skysat_triplet_pipeline.py`](/scripts/skysat_triplet_pipeline.py) - wrapper script for end to end triplet stereo processing workflow
+10. [`skysat_video_pipeline.py`](/scripts/skysat_video_pipeline.py) - wrapper script for end to end video stereo processing workflow
 #### [notebooks](/notebooks/) - notebooks used during analysis and figure preparation
 
 ## Sample products
@@ -42,7 +43,7 @@ Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crat
 
 ## Dependencies
 - See [environment.yml file](/environment.yml) for complete list of Python packages with pinned version numbers.
-- [NASA Ames Stereo Pipeline v 2.6.2](https://stereopipeline.readthedocs.io/en/latest/)
+- [NASA Ames Stereo Pipeline v 2.7.0](https://stereopipeline.readthedocs.io/en/latest/)
 
 ## Installation
 Please see the [install instructions](/docs/install_instructions.md).
@@ -65,4 +66,12 @@ Accompanying manuscript is under review, and will be available via open access a
 * We acknowledge Compton J. Tucker and others at NASA Goddard Space Flight Center and NASA Headquarters for coordinating the Commercial Satellite Data Access Program Pilot and assisting with prelimnary SkySat tasking campaigns. Paris Good at Planet provided invaluable assistance with data acquisition and facilitated discussions with Planet engineering teams. Thanks are also due to Ross Losher, Antonio Martos, Kelsey Jordahl and others at Planet for initial guidance on SkySat-C sensor specifications and camera models. Resources supporting this work were provided by the NASA High-End Computing (HEC) Program through the NASA Advanced Supercomputing (NAS) Division at Ames Research Center. Friedrich Knuth and Michelle Hu provided feedback on initial manuscript outline, code development and documentation. We also acknowledge input from the larger ASP community during photogrammetry discussions.
 
 ## Refrences
-Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
+>Beyer, Ross A., Oleg Alexandrov, and Scott McMichael. 2018. The Ames Stereo Pipeline: NASA's open source software for deriving and processing terrain data, Earth and Space Science, 5. https://doi.org/10.1029/2018EA000409.
+
+>Shean, D. E., O. Alexandrov, Z. Moratto, B. E. Smith, I. R. Joughin, C. C. Porter, Morin, P. J. 2016. An automated, open-source pipeline for mass production of digital elevation models (DEMs) from very high-resolution commercial stereo satellite imagery. ISPRS Journal of Photogrammetry and Remote Sensing, 116. https://doi.org/10.1016/j.isprsjprs.2016.03.012.
+
+>Ross Beyer, Oleg Alexandrov, ScottMcMichael, Michael Broxton, Mike Lundy, Kyle Husmann, … jlaura. (2020, July 28). NeoGeographyToolkit/StereoPipeline 2.7.0 (Version 2.7.0). Zenodo. http://doi.org/10.5281/zenodo.3963341
+
+>Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
+
+
