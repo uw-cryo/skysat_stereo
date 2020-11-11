@@ -17,6 +17,7 @@ dependencies:
  - descartes
  # misc
  - pip
+ - psutil
  - pip:
    # rotation_matrices
    - pyquaternion
