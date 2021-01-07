@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4422104.svg)](https://doi.org/10.5281/zenodo.4422104)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4422104.svg)](https://doi.org/10.5281/zenodo.4422248)
 
 # skysat_stereo
 Tools and libraries for processing Planet SkySat imagery, including camera model refinement, stereo reconstruction, and orthomosaic production
@@ -59,7 +59,7 @@ This project is licensed under the terms of the MIT License.
 ## Citation
 Accompanying manuscript is under review, and will be available via open access after publication. For now, please cite as:
 * Bhushan, Shashank, Shean, David E., Alexandrov, Oleg, & Henderson, Scott. (2020). Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing, submitted.
-* Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2021, January 7). uw-cryo/skysat_stereo: Zenodo doi revision updates (Version 0.2). Zenodo. http://doi.org/10.5281/zenodo.4422104
+* Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2021, January 7). uw-cryo/skysat_stereo: Zenodo doi revision updates (Version 0.2). Zenodo. http://doi.org/10.5281/zenodo.4422248
 
 ## Funding and Acknowledgments
 * This research was supported by the NASA Terrestrial Hydrology Program (THP) and the NASA Cryosphere Program. Shashank Bhushan was supported by a NASA FINESST award (80NSSC19K1338) and the NASA HiMAT project (NNX16AQ88G). David Shean, Oleg Alexandrov and Scott Henderson were supported by NASA THP award 80NSSC18K1405. SkySat tasking, data access, and supplemental support was provided under the [NASA Commercial Smallsat Data Acquisition Program 2018 Pilot Study](https://sit.earthdata.nasa.gov/about/small-satellite-commercial-data-buy-program)
