@@ -78,7 +78,7 @@ def main():
         print('total dems are {}'.format(len(total_dem_list)))
         out_fn_list = [os.path.join(out_folder,'triplet_{}_mos.tif'.format(stat)) for stat in stats_list]
         print("Mosaicing output total per-pixel nmad, count, nmad and 3 DEMs from 3 stereo combinations in parallel")
-        dem_mos_log = p_map(asp.dem_mosaic,[total_dem_list]*3+[for_aft_list,nadir_aft_list,for_nadir_list],out_fn_list+[os.path.join(out_folder,x) for x in ['for_aft_dem_median_mos.tif', 'nadir_aft_dem_median_mos.tif', 'for_nadir_dem_median_mos.tif']],['None']*6,[None]*6,stats_list+['median']*3,num_cpus=1)
+        dem_mos_log = p_map(asp.dem_mosaic,[total_dem_list]*3+[for_aft_list,nadir_aft_list,for_nadir_list],out_fn_list+[os.path.join(out_folder,x) for x in ['for_aft_dem_median_mos.tif', 'nadir_aft_dem_median_mos.tif', 'for_nadir_dem_median_mos.tif']],['None']*6,[None]*6,stats_list+['median']*3,[None]*6,num_cpus=4)
         out_log_fn = os.path.join(out_folder,'skysat_triplet_dem_mos.log')
         print("Saving triplet DEM mosaic log at {}".format(out_log_fn))
         with open(out_log_fn,'w') as f:
@@ -99,7 +99,7 @@ def main():
         stats_list = ['median','count','nmad']
         print('total dems are {}'.format(len(video_dem_list)))
         out_fn_list = [os.path.join(out_folder,'video_{}_mos.tif'.format(stat)) for stat in stats_list]
-        dem_mos_log = p_map(asp.dem_mosaic,[video_dem_list]*3,out_fn_list,['None']*3,[None]*3,stats_list) 
+        dem_mos_log = p_map(asp.dem_mosaic,[video_dem_list]*3,out_fn_list,['None']*3,[None]*3,stats_list,[None]*3) 
         out_log_fn = os.path.join(out_folder,'skysat_video_dem_mos.log')
         with open(out_log_fn,'w') as f:
             for log in dem_mos_log:

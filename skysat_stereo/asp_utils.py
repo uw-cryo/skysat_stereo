@@ -314,8 +314,8 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         type of input camera model (default: rpc)
     dem: str
         path to input DEM over which images will be draped (default: WGS84, orthorectify just over datum)
-    tr: float/int
-        target resolution of orthorectified output image
+    tr: str
+        target resolution of orthorectified output image (e.g.: '0.9')
     t_srs: str
         target projection of orthorectified output image (default: EPSG:4326)
     cam: str
@@ -357,6 +357,8 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         target projection of orthorectified output image (default: EPSG:4326)
     stats: str
         metric to use for mosaicing
+    tile_size: int
+        tile size for distributed mosaicing (if less on memory)
     Returns
     ----------
     out: str
@@ -364,17 +366,37 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
     """
 
     dem_mosaic_opt = []
-    dem_mosaic_opt.extend(['-o',outfn])
+  
     if stats:
         dem_mosaic_opt.extend(['--{}'.format(stats)])
     if (tr is not None) & (ast.literal_eval(tr) is not None):
         dem_mosaic_opt.extend(['--tr', str(tr)])
     if tsrs:
         dem_mosaic_opt.extend(['--t_srs', tsrs])
-    if tile_size:
-        dem_mosaic_opt.extend(['--tile-size',str(tile_size)])
     dem_mosaic_args = img_list
-    out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
+    if tile_size:
+        # will first perform tile-wise vertical mosaicing
+        # then blend the result
+        dem_mosaic_opt.extend(['--tile-size',str(tile_size)])
+        temp_fol = os.path.splitext(outfn)[0]+'_temp'
+        dem_mosaic_opt.extend(['-o',os.path.join(temp_fol,run)])
+        out_tile_op = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
+        # query all tiles and then do simple mosaic
+        mos_tile_list = sorted(glob.glob(os.path.join(temp_fol+'run-*.tif')))
+        print(f"Found {len(mos_tile_list)}")
+        # now perform simple mosaic
+        dem_mos2_opt = []
+        dem_mos2_opt.extend(['-o',outfn])
+        dem_mos2_args = mos_tile_list
+        out_fn_mos = run_cmd('dem_mosaic',dem_mos2_args+dem_mos2_opt)
+        out = out_tile_op+out_fn_mos
+        print("Deleting tile directory")
+        shutil.rmtree(temp_fol)
+
+    else:
+        # process all at once, no tiling
+        dem_mosaic_opt.extend(['-o',outfn])
+        out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
     return out
 
 def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):

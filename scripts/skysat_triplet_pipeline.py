@@ -1,12 +1,14 @@
 #! /usr/bin/env python
 import subprocess
 import argparse
-import os,sys,glob
+import os,sys,glob,shutil
 from rpcm import geo
 import numpy as np
 import geopandas as gpd
 from distutils.spawn import find_executable
+from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
+
 
 """
 Script for running the full pipeline based on workflow described in ISPRS 2020 submission
@@ -43,11 +45,14 @@ def main():
     img_list = glob.glob(os.path.join(img_folder,'*.tif'))+glob.glob(os.path.join(img_folder,'*.tiff'))
     if len(img_list)<2:
         print(f"Only {len(img_list)} images detected, exiting")
+        sys.exit()
     if not os.path.exists(coreg_dem):
         print(f"Coreg dem {coreg_dem} could not be located, exiting")
+        sys.exit()
     if not os.path.exists(ortho_dem):
         print(f"Ortho dem {ortho_dem} could not be located, exiting")
-    
+        sys.exit()
+
     # structure for output folder
     out_fol = os.path.join(args.outfolder,'proc_out')
     job_name = args.job_name
@@ -102,11 +107,14 @@ def main():
 			
     # step 9, final orthorectification
     final_ortho_dir = os.path.join(out_fol,'georegisterd_orthomosaics')
-
-    # step 10, experimental rpc production
+    
+    # step 10, plot figure
+    final_figure = os.path.join(out_fol,f"{job_name}_result.jpg")
+    
+    # step 11, experimental rpc production
     
     if args.full_workflow == 1:
-         steps2run = np.arange(0,10) # run the entire 9 steps
+         steps2run = np.arange(0,11) # run the entire 9 steps
     else:
         steps2run = np.array(args.partial_workflow_steps).astype(int)
 
@@ -272,6 +280,14 @@ def main():
 		     '-ba_prefix',os.path.join(aligned_cam_dir,'run-run')]
         print("Running final orthomsaic creation")
         asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+    if 10 in steps2run:
+        # this produces a final plot of orthoimage,DEM, NMAD and countmaps
+        ortho = glob.glob(os.path.join(final_ortho_dir,'*finest_orthomosaic.tif'))[0]
+        count = glob.glob(os.path.join(mos_dem_dir,'*count*.tif'))[0]
+        nmad = glob.glob(os.path.join(mos_dem_dir,'*nmad*.tif'))[0]
+        georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]
+        print("plotting final figure")
+        misc.plot_composite_fig(ortho,georegistered_median_dem,count,nmad,outfn=final_figure)
 
 if __name__ == '__main__':
     main()

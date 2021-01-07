@@ -82,11 +82,11 @@ def main():
         aft_out_mos = os.path.join(outdir,'aft_map_mos_{}m.tif'.format(tr))
         aft_map_list = sorted(glob.glob(os.path.join(aft_out_dir,'*.tif')))
         print("Preparing forward browse orthomosaic")
-        for_mos_log = asp.dem_mosaic(for_map_list,for_out_mos,tr,tsrs,'first')
+        for_mos_log = asp.dem_mosaic(for_map_list,for_out_mos,tr,tsrs,'first',None)
         print("Preparing nadir browse orthomosaic")
-        nadir_mos_log = asp.dem_mosaic(nadir_map_list, nadir_out_mos, tr, tsrs, 'first')
+        nadir_mos_log = asp.dem_mosaic(nadir_map_list, nadir_out_mos, tr, tsrs, 'first',None)
         print("Preparing aft browse orthomosaic")
-        aft_mos_log = asp.dem_mosaic(aft_map_list, aft_out_mos, tr, tsrs, 'first')
+        aft_mos_log = asp.dem_mosaic(aft_map_list, aft_out_mos, tr, tsrs, 'first',None)
         ## delete temporary files
         if del_opt:
             [shutil.rmtree(x) for x in [for_out_dir,nadir_out_dir,aft_out_dir]]
@@ -150,14 +150,14 @@ def main():
                 median_mosaic = os.path.join(outdir,'{}_{}_{}_median_orthomosaic.tif'.format(for_time,nadir_time,aft_time))
                 wt_avg_mosaic = os.path.join(outdir,'{}_{}_{}_wt_avg_orthomosaic.tif'.format(for_time,nadir_time,aft_time))
                 print("producing finest resolution on top mosaic, per-pixel median and wt_avg mosaic")
-                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], ['None']*3, [None]*3, ['first','median',None],num_cpus=2)
+                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], ['None']*3, [None]*3, ['first','median',None],[None]*3,num_cpus=4)
                 res_sorted_log = asp.dem_mosaic(res_sorted_list,res_sorted_mosaic,tr='None',stats='first')
                 print("producing idependent mosaic for different views in parallel")
                 for_mosaic = os.path.join(outdir,'{}_for_first_mosaic.tif'.format(for_time))
                 nadir_mosaic = os.path.join(outdir,'{}_nadir_first_mosaic.tif'.format(nadir_time))
                 aft_mosaic = os.path.join(outdir,'{}_aft_first_mosaic.tif'.format(aft_time))
                 # prepare mosaics in parallel
-                indi_mos_log = p_map(asp.dem_mosaic,[for_img_list,nadir_img_list,aft_img_list], [for_mosaic,nadir_mosaic,aft_mosaic], ['None']*3, [None]*3, ['first']*3,num_cpus=2)
+                indi_mos_log = p_map(asp.dem_mosaic,[for_img_list,nadir_img_list,aft_img_list], [for_mosaic,nadir_mosaic,aft_mosaic], ['None']*3, [None]*3, ['first']*3,[None]*3,num_cpus=4)
                 out_log = os.path.join(outdir,'science_mode_ortho_mos.log')
                 total_mos_log = all_3_view_mos_logs+indi_mos_log
                 print("Saving orthomosaic log at {}".format(out_log))
@@ -173,7 +173,7 @@ def main():
                 print("producing orthomosaic with weighted average statistics")
                 wt_avg_mosaic = os.path.join(outdir,'video_wt_avg_orthomosaic.tif')
                 print("Mosaicing will be done in parallel")
-                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], ['None']*3, [None]*3, ['first','median',None])
+                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], ['None']*3, [None]*3, ['first','median',None],[None]*3)
                 out_log = os.path.join(outdir,'science_mode_ortho_mos.log')
                 print("Saving orthomosaic log at {}".format(out_log))
                 with open(out_log,'w') as f:

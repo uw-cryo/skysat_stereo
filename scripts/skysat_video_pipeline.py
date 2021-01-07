@@ -6,6 +6,7 @@ from rpcm import geo
 import numpy as np
 import geopandas as gpd
 from distutils.spawn import find_executable
+from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
 from skysat_stereo import skysat
 
@@ -99,6 +100,9 @@ def main():
 			
     # step7, final orthorectification
     final_ortho_dir = os.path.join(out_fol,'georegisterd_orthomosaics')
+
+    # step 8, plot figure
+    final_figure = os.path.join(out_fol,f"{job_name}_result.jpg") 
 
     # step 10, experimental rpc production
     
@@ -275,6 +279,15 @@ def main():
 		     '-ba_prefix',os.path.join(aligned_cam_dir,'run-run'),'-frame_index',frame_index]
         print("Running final orthomsaic creation")
         asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+
+    if 8 in steps2run:
+        # this produces a final plot of orthoimage,DEM, NMAD and countmaps
+        ortho = glob.glob(os.path.join(final_ortho_dir,'*median_orthomosaic.tif'))[0]
+        count = glob.glob(os.path.join(mos_dem_dir,'*count*.tif'))[0]
+        nmad = glob.glob(os.path.join(mos_dem_dir,'*nmad*.tif'))[0]
+        georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]
+        print("plotting final figure")
+        misc.plot_composite_fig(ortho,georegistered_median_dem,count,nmad,outfn=final_figure,product='video')
 
 if __name__ == '__main__':
     main()
