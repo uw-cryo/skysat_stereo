@@ -106,7 +106,7 @@ def main():
     aligned_cam_dir = os.path.join(out_fol,'georegistered_cameras')
 			
     # step 9, final orthorectification
-    final_ortho_dir = os.path.join(out_fol,'georegisterd_orthomosaics')
+    final_ortho_dir = os.path.join(out_fol,'georegistered_orthomosaics')
     
     # step 10, plot figure
     final_figure = os.path.join(out_fol,f"{job_name}_result.jpg")
