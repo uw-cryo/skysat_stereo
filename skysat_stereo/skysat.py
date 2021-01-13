@@ -304,7 +304,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
         job_list.append(stereo_opt + stereo_args)
     return job_list
 
-def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,dem=None,sampling_interval=None,texture=None,crop_map=False,outfol=None,frame_index=None,block=0,full_extent=False):
+def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,dem=None,sampling_interval=None,texture=None,crop_map=False,outfol=None,frame_index=None,block=0,full_extent=False,entry_point='pprc'):
     """
     Builds subprocess job list for video collection pairwise implementation
 
@@ -482,7 +482,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         job_list.append(stereo_opt + stereo_args)
     return job_list
 
-def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',crop_map=True,outfol=None,block=0):
+def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',crop_map=True,outfol=None,block=0,entry_point='pprc'):
     """
     Builds subprocess job list for triplet collection pairwise implementation
 
@@ -510,6 +510,8 @@ def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam
         Path to master output folder where the stereo results will be saved
     block: int
         Select 0 for the defualt MGM matching, 1 for block matching
+    entry_point: str
+        Select stage from which to start ASP processing (pprc,corr,rfne,fltr,tri)
 
     Returns
     ----------
@@ -618,8 +620,19 @@ def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam
             if 'map' in t:
             	l_img_list.append(os.path.basename(in_img1).split('_warp.tif',15)[0]+'.tif')
             	r_img_list.append(os.path.basename(in_img2).split('_warp.tif',15)[0]+'.tif')
+            # entry_point logic
+            if entry_point == 'pprc':
+                ep = 0
+            elif entry_point == 'corr':
+                ep = 1
+            elif entry_point == 'rfne':
+                ep = 3
+            elif entry_point == 'fltr':
+                ep = 4
+            elif entry_point == 'tri':
+                ep = 5
             # Prepare stereo options
-            stereo_opt = asp_utils.get_stereo_opts(session=t,threads=threads,ba_prefix=ba,align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
+            stereo_opt = asp_utils.get_stereo_opts(session=t,ep = ep, threads=threads,ba_prefix=ba,align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
             job_list.append(stereo_opt + stereo_args)
     overlap_new = os.path.join(outfol,'overlap_list_as_per_dense_ba.pkl')
     df_out = pd.DataFrame({'img1':l_img_list,'img2':r_img_list})

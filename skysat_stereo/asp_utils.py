@@ -399,7 +399,7 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
     return out
 
-def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
+def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
     """
     prepares stereo cmd for ASP
     See ASP's stereo documentation here: https://stereopipeline.readthedocs.io/en/latest/correlation.html
@@ -407,6 +407,8 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
     ----------
     session: str
         camera model with which stereo steps (preprocessing, triangulation will be performed (default: rpc)
+    ep: int
+        ASP entry point 
     threads: int
         number of threads to use for each stereo job (default: 4)
     ba_prefix: str
@@ -444,6 +446,7 @@ def get_stereo_opts(session='rpc',threads=4,ba_prefix=None,align='Affineepipolar
     stereo_opt = []
     # session_args
     stereo_opt.extend(['-t', session])
+    stereo_opt.extend(['-e',str(ep)])
     stereo_opt.extend(['--threads', str(threads)])
     if ba_prefix:
         stereo_opt.extend(['--bundle-adjust-prefix', ba_prefix])
