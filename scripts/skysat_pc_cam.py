@@ -54,11 +54,20 @@ def main():
         if args.tsrs is not None:
             tsrs = args.tsrs
         else:
-           print("Projected Target CRS not provided, reading from the first point cloud")
-           pc_ds = iolib.fn_getds(pc_list[0])
-           wgs_srs = osr.SpatialReference()
-           wgs_srs.ImportFromEPSG(4326)
-           clon,clat = geolib.get_center(pc_ds,t_srs=wgs_srs)
+            print("Projected Target CRS not provided, reading from the first point cloud")
+            pc_ds = iolib.fn_getds(pc_list[0])
+            wgs_srs = osr.SpatialReference()
+            wgs_srs.ImportFromEPSG(4326)
+            clon,clat = geolib.get_center(pc_ds,t_srs=wgs_srs)
+            # if the cloud is does not work
+            if (np.abs(clon)<0.01) & (np.abs(clat)<0.01):
+                #fetch the PC-center.txt file instead
+                # should probably make this default after more tests and confirmation with Oleg
+                pc_center = os.path.splitext(pc_list[0])[0]+'-center.txt'
+                with open(pc_center,'r') as f:
+                    content = f.readlines()
+                X,Y,Z = [np.float(x) for x in content[0].split(' ')[:-1]]
+                clon,clat,_ = geolib.ecef2ll(X,Y,Z)
            epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
            print(f"Detected EPSG code from point cloud {epsg_code}") 
            tsrs = epsg_code
