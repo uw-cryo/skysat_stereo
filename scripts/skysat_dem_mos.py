@@ -53,7 +53,7 @@ def main():
                valid_for_nadir_dir.append(for_nadir_dir)
             except:
                continue
-        for for_aft_dir in sorted(glob.glob(os.path.join(dir_list[2],'*/'))):
+        for for_aft_dir in sorted(glob.glob(os.path.join(dir_list[1],'*/'))):
             try:
                # see ASP issue for this dirty hack: https://github.com/NeoGeographyToolkit/StereoPipeline/issues/308
                 D_sub = iolib.fn_getma(os.path.join(for_aft_dir,'run-D_sub.tif'),3)
@@ -62,7 +62,7 @@ def main():
                 valid_for_aft_dir.append(for_aft_dir)
             except:
                 continue
-        for nadir_aft_dir in sorted(glob.glob(os.path.join(dir_list[1],'*/'))):
+        for nadir_aft_dir in sorted(glob.glob(os.path.join(dir_list[2],'*/'))):
             try:
                 D_sub = iolib.fn_getma(os.path.join(nadir_aft_dir,'run-D_sub.tif'),3)
                 stats = [np.percentile(D_sub.compressed(),(2,98)),np.mean(D_sub.compressed())]
