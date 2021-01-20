@@ -379,10 +379,11 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         # then blend the result
         dem_mosaic_opt.extend(['--tile-size',str(tile_size)])
         temp_fol = os.path.splitext(outfn)[0]+'_temp'
-        dem_mosaic_opt.extend(['-o',os.path.join(temp_fol,run)])
+        dem_mosaic_opt.extend(['-o',os.path.join(temp_fol,'run')])
         out_tile_op = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
         # query all tiles and then do simple mosaic
-        mos_tile_list = sorted(glob.glob(os.path.join(temp_fol+'run-*.tif')))
+        #print(os.path.join(temp_fol,'run-*.tif'))
+        mos_tile_list = sorted(glob.glob(os.path.join(temp_fol,'run-*.tif')))
         print(f"Found {len(mos_tile_list)}")
         # now perform simple mosaic
         dem_mos2_opt = []
