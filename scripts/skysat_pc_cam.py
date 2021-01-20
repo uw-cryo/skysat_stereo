@@ -59,7 +59,7 @@ def main():
             wgs_srs = osr.SpatialReference()
             wgs_srs.ImportFromEPSG(4326)
             clon,clat = geolib.get_center(pc_ds,t_srs=wgs_srs)
-            # if the cloud is does not work
+            # if the cloud is from non ortho stereo inputs, this does not work
             if (np.abs(clon)<0.01) & (np.abs(clat)<0.01):
                 #fetch the PC-center.txt file instead
                 # should probably make this default after more tests and confirmation with Oleg
@@ -68,9 +68,9 @@ def main():
                     content = f.readlines()
                 X,Y,Z = [np.float(x) for x in content[0].split(' ')[:-1]]
                 clon,clat,_ = geolib.ecef2ll(X,Y,Z)
-           epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
-           print(f"Detected EPSG code from point cloud {epsg_code}") 
-           tsrs = epsg_code
+            epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
+            print(f"Detected EPSG code from point cloud {epsg_code}") 
+            tsrs = epsg_code
      
         point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs,threads=1)
         job_list = [point2dem_opts + [pc] for pc in pc_list]
