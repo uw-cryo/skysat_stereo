@@ -4,10 +4,10 @@
 Tools and libraries for processing Planet SkySat imagery, including camera model refinement, stereo reconstruction, and orthomosaic production
 
 ## Introduction
-Planet operates a constellation of 13 SkySat-C SmallSats, which can acquire very-high-resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand, high-resolution Digital Elevation Models (DEMs) for any point on the Earth's surface, with broad applications for Earth science research. However, the quality of these DEMs is currently limited by the geolocation accuracy of the default SkySat camera models, and few existing photogrammetry tools can process the SkySat images.
+Planet operates a constellation of 19 SkySat-C SmallSats, which can acquire very-high-resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand, high-resolution Digital Elevation Models (DEMs) for any point on the Earth's surface, with broad applications for Earth science research. However, the quality of these DEMs is currently limited by the geolocation accuracy of the default SkySat camera models, and few existing photogrammetry tools can process the SkySat images.
 
 ## Purpose
-We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript submitted to ISPRS Journal of Photogrammetry and Remote Sensing in July 2020. This repository contains all tools and libraries as a supplement to the manuscript under review.
+We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript published in ISPRS Journal of Photogrammetry and Remote Sensing. This repository contains all tools and libraries as a supplement to the published manuscript. 
 This project is under active development and we welcome contributions (information for contributors forthcoming) and preliminary feedback from early visitors (you) :)
 
 ## Contents
@@ -57,8 +57,8 @@ Notes:
 This project is licensed under the terms of the MIT License.
 
 ## Citation
-Accompanying manuscript is under review, and will be available via open access after publication. For now, please cite as:
-* Bhushan, Shashank, Shean, David E., Alexandrov, Oleg, & Henderson, Scott. (2020). Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing, submitted.
+Please cite as:
+* Bhushan, S.; Shean, D.; Alexandrov, O.; Henderson, S. Automated digital elevation model (DEM)generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing 2021, 173, 151–165. doi:10.1016/j.isprsjprs.2020.12.012.
 * Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2021, January 7). uw-cryo/skysat_stereo: Zenodo doi revision updates (Version 0.2). Zenodo. http://doi.org/10.5281/zenodo.4422248
 
 ## Funding and Acknowledgments
