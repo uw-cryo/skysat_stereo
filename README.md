@@ -58,7 +58,7 @@ This project is licensed under the terms of the MIT License.
 
 ## Citation
 Please cite as:
-* Bhushan, S.; Shean, D.; Alexandrov, O.; Henderson, S. Automated digital elevation model (DEM)generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing 2021, 173, 151–165. doi:10.1016/j.isprsjprs.2020.12.012.
+* Bhushan, S.; Shean, D.; Alexandrov, O.; Henderson, S. Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing 2021, 173, 151–165. doi:10.1016/j.isprsjprs.2020.12.012.
 * Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2021, January 7). uw-cryo/skysat_stereo: Zenodo doi revision updates (Version 0.2). Zenodo. http://doi.org/10.5281/zenodo.4422248
 
 ## Funding and Acknowledgments
