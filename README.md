@@ -7,7 +7,8 @@ Tools and libraries for processing Planet SkySat imagery, including camera model
 Planet operates a constellation of 19 SkySat-C SmallSats, which can acquire very-high-resolution (0.7 m to 0.9 m) triplet stereo and continuous video imagery with short revisit times. This provides an excellent opportunity to derive on-demand, high-resolution Digital Elevation Models (DEMs) for any point on the Earth's surface, with broad applications for Earth science research. However, the quality of these DEMs is currently limited by the geolocation accuracy of the default SkySat camera models, and few existing photogrammetry tools can process the SkySat images.
 
 ## Purpose
-We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. This workflow is described and evaluated in a manuscript published in ISPRS Journal of Photogrammetry and Remote Sensing. This repository contains all tools and libraries as a supplement to the published manuscript. 
+We developed automated workflows to refine the SkySat camera models and produce accurate DEMs and orthomosaics. For additional details on the workflow and evaluation of output products, please see the corresponding [open-access publication](https://doi.org/10.1016/j.isprsjprs.2020.12.012) in the ISPRS Journal of Photogrammetry and Remote Sensing. This repository contains all tools and libraries as a supplement to the published manuscript. 
+
 This project is under active development and we welcome contributions (information for contributors forthcoming) and preliminary feedback from early visitors (you) :)
 
 ## Contents
@@ -54,11 +55,11 @@ Notes:
 * The code should work for \*nix platforms. We have not tested on Windows. 
 
 ## License
-This project is licensed under the terms of the MIT License.
+This project is licensed under the terms of the [MIT License](./LICENSE).
 
 ## Citation
-Please cite as:
-* Bhushan, S.; Shean, D.; Alexandrov, O.; Henderson, S. Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing 2021, 173, 151–165. doi:10.1016/j.isprsjprs.2020.12.012.
+If you use this code and/or derived products in a scientific publication, please cite:
+* Bhushan, S., Shean, D., Alexandrov, O., & Henderson, S. (2021). Automated digital elevation model (DEM) generation from very-high-resolution Planet SkySat triplet stereo and video imagery. ISPRS Journal of Photogrammetry and Remote Sensing, 173, 151–165. https://doi.org/10.1016/j.isprsjprs.2020.12.012.
 * Shashank Bhushan, David Shean, Oleg Alexandrov, & Scott Henderson. (2021, January 7). uw-cryo/skysat_stereo: Zenodo doi revision updates (Version 0.2). Zenodo. http://doi.org/10.5281/zenodo.4422248
 
 ## Funding and Acknowledgments
@@ -66,12 +67,7 @@ Please cite as:
 * We acknowledge Compton J. Tucker and others at NASA Goddard Space Flight Center and NASA Headquarters for coordinating the Commercial Satellite Data Access Program Pilot and assisting with prelimnary SkySat tasking campaigns. Paris Good at Planet provided invaluable assistance with data acquisition and facilitated discussions with Planet engineering teams. Thanks are also due to Ross Losher, Antonio Martos, Kelsey Jordahl and others at Planet for initial guidance on SkySat-C sensor specifications and camera models. Resources supporting this work were provided by the NASA High-End Computing (HEC) Program through the NASA Advanced Supercomputing (NAS) Division at Ames Research Center. Friedrich Knuth and Michelle Hu provided feedback on initial manuscript outline, code development and documentation. We also acknowledge input from the larger ASP community during photogrammetry discussions.
 
 ## Refrences
->Beyer, Ross A., Oleg Alexandrov, and Scott McMichael. 2018. The Ames Stereo Pipeline: NASA's open source software for deriving and processing terrain data, Earth and Space Science, 5. https://doi.org/10.1029/2018EA000409.
-
->Shean, D. E., O. Alexandrov, Z. Moratto, B. E. Smith, I. R. Joughin, C. C. Porter, Morin, P. J. 2016. An automated, open-source pipeline for mass production of digital elevation models (DEMs) from very high-resolution commercial stereo satellite imagery. ISPRS Journal of Photogrammetry and Remote Sensing, 116. https://doi.org/10.1016/j.isprsjprs.2016.03.012.
-
->Ross Beyer, Oleg Alexandrov, ScottMcMichael, Michael Broxton, Mike Lundy, Kyle Husmann, … jlaura. (2020, July 28). NeoGeographyToolkit/StereoPipeline 2.7.0 (Version 2.7.0). Zenodo. http://doi.org/10.5281/zenodo.3963341
-
->Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
-
-
+* Beyer, Ross A., Oleg Alexandrov, and Scott McMichael. 2018. The Ames Stereo Pipeline: NASA's open source software for deriving and processing terrain data, Earth and Space Science, 5. https://doi.org/10.1029/2018EA000409.
+* Shean, D. E., O. Alexandrov, Z. Moratto, B. E. Smith, I. R. Joughin, C. C. Porter, Morin, P. J. 2016. An automated, open-source pipeline for mass production of digital elevation models (DEMs) from very high-resolution commercial stereo satellite imagery. ISPRS Journal of Photogrammetry and Remote Sensing, 116. https://doi.org/10.1016/j.isprsjprs.2016.03.012.
+* Ross Beyer, Oleg Alexandrov, ScottMcMichael, Michael Broxton, Mike Lundy, Kyle Husmann, … jlaura. (2020, July 28). NeoGeographyToolkit/StereoPipeline 2.7.0 (Version 2.7.0). Zenodo. http://doi.org/10.5281/zenodo.3963341
+* Planet application program interface:  In space for life on earth. San Francisco, CA. https://api.planet.com.
