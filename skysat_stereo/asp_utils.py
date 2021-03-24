@@ -484,7 +484,7 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     - median-filter-size, --texture-smooth-size (I guess these are set to some defualts for sgm/mgm ?)
     """
     # stereo_tri_args:
-    disp_trip = 2500
+    disp_trip = 10000
     if not mvs:
         stereo_opt.extend(['--num-matches-from-disp-triplets', str(disp_trip)])
         stereo_opt.extend(['--unalign-disparity'])
@@ -509,7 +509,7 @@ def convergence_angle(az1, el1, az2, el2):
     conv_ang = np.rad2deg(np.arccos(np.sin(np.deg2rad(el1)) * np.sin(np.deg2rad(el2)) + np.cos(np.deg2rad(el1)) * np.cos(np.deg2rad(el2)) * np.cos(np.deg2rad(az1 - az2))))
     return conv_ang
 
-def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, threads=n_cpu,trans_only=False):
+def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, threads=n_cpu,trans_only=False,initial_align=None):
     """
     prepares ASP pc_align ICP cmd
     See pc_align documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -545,6 +545,8 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
         pc_align_opts.extend(['--save-inv-transformed-reference-points'])
     if trans_only:
         pc_align_opts.extend(['--compute-translation-only'])
+    if initial_align:
+        pc_align_opts.extend(['--initial-transform',initial_align])
     pc_align_opts.extend(['-o', outprefix])
     return pc_align_opts
 
@@ -571,6 +573,7 @@ def get_point2dem_opts(tr, tsrs,threads=n_cpu):
     point2dem_opts.extend(['--t_srs', tsrs])
     point2dem_opts.extend(['--threads',str(threads)])
     point2dem_opts.extend(['--errorimage'])
+    point2dem_opts.extend(['--nodata-value',str(-9999.0)])
     return point2dem_opts
 
 def get_total_shift(pc_align_log):
@@ -593,7 +596,7 @@ def get_total_shift(pc_align_log):
     total_shift = np.float(max_alignment_string[0].split(':',15)[-1].split('m')[0])
     return total_shift
 
-def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False, threads=n_cpu):
+def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False, threads=n_cpu,initial_align=None):
     """
     This function implements the full DEM alignment workflow using ASP's pc_align and point2dem programs
     See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -636,7 +639,7 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         pc_align_vec = '-inverse-transform.txt'
     print("Aligning clouds via the {} method".format(align))
 
-    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only,threads=threads)
+    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only,initial_align=initial_align,threads=threads)
     pc_align_log = run_cmd('pc_align', pc_align_opts + pc_align_args)
     print(pc_align_log)
     # this try, except block checks for 2 things.
@@ -823,6 +826,44 @@ def compute_cam_px_reproj_err_stats(content_line,idx):
     """
     px,py = read_px_error(content_line,idx)
     stats = malib.get_stats_dict(np.sqrt(px**2+py**2),full=True)
+    return stats
+
+def compute_cam_px_reproj_err_stats_alt(content_fn,idx):
+    """
+    Compute discriptive pixel reprojection error stats for all points in a given camera and return as dict
+    Parameters
+    -----------
+    content_line: list
+        list of str, each string containing 1 line contents of run-final_residuals_no_loss_function_raw_pixels.txt
+    idx: np.array
+        point indices for which reprojection error needs to be read
+    Returns
+    -----------
+    stats: dictionary
+        cumulative descriptive stats for all pixels viewed from a given camera
+    """
+    with open(content_fn,'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    try:
+        
+        px,py = read_px_error(content,idx)
+        stats = malib.get_stats_dict(np.sqrt(px**2+py**2),full=True)
+    except ValueError:
+        stats = {'count': 0,
+        'min': 0.0,
+        'max': 0.0,
+        'ptp': 0.0,
+        'mean': 0.0,
+        'std': 0.0,
+        'nmad': 0.0,
+        'med': 0.0,
+        'median': 0.0,
+        'p16': 0.0,
+        'p84': 0.0,
+        'spread': 0.0,
+        'mode': 0.0}   
+        pass 
     return stats
 
 def camera_reprojection_error_stats_df(pixel_error_fn):
