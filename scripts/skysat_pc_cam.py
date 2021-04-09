@@ -25,6 +25,7 @@ def get_parser():
         # classic dem align options, also carried forward to multi_align
         align_choice = ['point-to-point', 'point-to-plane']
         parser.add_argument('-align', choices=align_choice, default='point-to-plane', help='ICP Alignment algorithm (defualt: %(default)s)')
+        parser.add_argument('-initial_align',default=None,type=str,help='Alignment transform from initial PC align run')
         parser.add_argument('-max_displacement', default=100.0, type=float, help='Maximum allowable displacement between two DEMs (defualt: %(default)s)')
         trans_choice = [0, 1]
         parser.add_argument('-trans_only', default=0, type = int, choices=trans_choice, help='1: compute translation only, (default: %(default)s)')
@@ -92,6 +93,7 @@ def main():
         ref_dem=args.refdem
         source_dem_list=args.source_dem_list
         max_displacement=args.max_displacement
+        
         outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
         align=args.align
         if args.trans_only == 0:
@@ -99,11 +101,12 @@ def main():
         else:
             trans_only=True
         n_source=len(source_dem_list)
+        initial_align = [args.initial_align] * n_source
         ref_dem_list=[ref_dem] * n_source
         max_disp_list=[max_displacement] * n_source
         align_list=[align] * n_source
         trans_list=[trans_only] * n_source
-        p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,align_list,trans_list,[1]*n_source,num_cpus = n_cpu_thread)
+        p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,align_list,trans_list,[1]*n_source,initial_align,num_cpus = n_cpu_thread)
     if mode == 'align_cameras':
         transform_txt = args.transform
         input_camera_list = args.cam_list
