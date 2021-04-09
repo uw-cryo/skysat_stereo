@@ -7,6 +7,7 @@ import argparse
 import os,sys,glob
 from multiprocessing import cpu_count
 from p_tqdm import p_map
+from tqdm import tqdm
 
 def getparser():
     parser = argparse.ArgumentParser(description='Script for performing stereo jobs, generalised for skysat video and triplet stereo products')
@@ -39,6 +40,9 @@ def getparser():
     parser.add_argument('-block', default=0, type=int, choices=mvs_choices, help='1: use block matching instead of default MGM (default: %(default)s')
     parser.add_argument('-full_extent',type=int,choices = mvs_choices,default=1,
                         help='Selecting larger intervals can result in lower footprint output DEM, if 1: then DEMs with smaller interval image pairs will be padded at the begining and end of the video sequence (default: %(default)s)')
+    parser.add_argument('-writeout_only', action='store_true', help='writeout_jobs to a text file, not run')
+    parser.add_argument('-job_fn',type=str,help='text file to write stereo jobs to')
+    parser.add_argument('-cross_track',action='store_true', help='attempt stereo for cross_track pairs as well')
     return parser
 
 def main():
@@ -86,22 +90,31 @@ def main():
             crop_map = True
         else: 
             crop_map = False
-        job_list = skysat.triplet_stereo_job_list(t=args.t,
+        job_list = skysat.triplet_stereo_job_list(cross_track=args.cross_track,t=args.t,
                 threads = args.threads,overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, crop_map=crop_map,texture=texture, outfol=outfol, block=args.block,entry_point=args.entry_point)
-    # decide on number of processes
-    # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
-    # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
-    # next build should accept no of jobs and stereo threads as inputs
-    print(job_list[0])
-    n_cpu = cpu_count()
-    # no of parallel jobs with user specified threads per job
-    jobs = int(n_cpu/args.threads)
-    stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
-    stereo_log_fn = os.path.join(outfol,'stereo_log.log')
-    print("Consolidated stereo log saved at {}".format(stereo_log_fn))
-    #with open(stereo_log_fn,'w') as f:
-     #   for logs in stereo_log:
-      #      f.write(logs)
+    if not args.writeout_only:
+        # decide on number of processes
+        # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
+        # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
+        # next build should accept no of jobs and stereo threads as inputs
+    
+        print(job_list[0])
+        n_cpu = cpu_count()
+        # no of parallel jobs with user specified threads per job
+        jobs = int(n_cpu/args.threads)
+        stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
+        stereo_log_fn = os.path.join(outfol,'stereo_log.log')
+        print("Consolidated stereo log saved at {}".format(stereo_log_fn))
+        #with open(stereo_log_fn,'w') as f:
+        #   for logs in stereo_log:
+        #      f.write(logs)
+    else:
+        print(f"Writng jobs at {args.job_fn}")
+        
+        with open(args.job_fn,'w') as f:
+            for job in tqdm(job_list):
+                job_str = 'stereo ' + ' '.join(job) + '\n'
+                f.write(job_str)
     print("Script is complete")
 
 if __name__ == "__main__":
