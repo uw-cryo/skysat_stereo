@@ -300,7 +300,7 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
         ba_opt.extend(['--elevation-limit',str(elevation_limit[0]),str(elevation_limit[1])])
     return ba_opt
 
-def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam=None,ba_prefix=None):
+def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam=None,ba_prefix=None,extent=None):
     """
     orthorectify input image over a given DEM using ASP's mapproject program.
     See mapproject documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/mapproject.html
@@ -322,6 +322,8 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         if pinhole session, this will be the path to pinhole camera model
     ba_prefix: str
         Bundle adjustment output for RPC camera.
+    extent: str
+        Projection extent within which to limit mapprojection
     Returns
     ----------
     out: str
@@ -332,12 +334,16 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     map_opt.extend(['--t_srs',t_srs])
     if ba_prefix:
         map_opt.extend(['--bundle-adjust-prefix',ba_prefix])
+    if extent:
+        xmin,ymin,xmax,ymax = extent.split(' ')
+        map_opt.extend(['--t_projwin', xmin,ymin,xmax,ymax])
     if tr:
         map_opt.extend(['--tr',tr])
     if cam:
         map_args = [dem,img,cam,outfn]
     else:
         map_args = [dem,img,outfn]
+    
     out = run_cmd('mapproject',map_opt+map_args)
     return out
 
