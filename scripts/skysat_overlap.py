@@ -19,6 +19,7 @@ def getparser():
     parser.add_argument('-img_folder', help='Folder containing images with RPC information', required=True)
     parser.add_argument('-percentage', '--percentage', help='percentage_overlap between 0 to 1', required=True)
     parser.add_argument('-outfn','--out_fn',help='Text file containing the overlapping pairs')
+    parser.add_argument('-cross_track',action='store_true',help='Also make cross-track pairs')
     return parser
 
 # Global var
@@ -80,8 +81,12 @@ def main():
     img2_list = [x[1] for x in valid_list]
     out_df = pd.DataFrame({'img1':img1_list,'img2':img2_list,'overlap_perc':overlap_perc_list})
     out_df.to_pickle(out_fn_overlap)
+    if args.cross_track:
+        cross_track = True
+    else: 
+        cross_track = False
     out_fn_stereo = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.pkl'
-    stereo_only_df = skysat.prep_trip_df(out_fn_overlap)
+    stereo_only_df = skysat.prep_trip_df(out_fn_overlap,cross_track=cross_track)
     stereo_only_df.to_pickle(out_fn_stereo)
     out_fn_stereo_ba = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.txt'
     stereo_only_df[['img1','img2']].to_csv(out_fn_stereo_ba,sep=' ',header=False,index=False)
