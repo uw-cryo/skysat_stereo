@@ -26,12 +26,14 @@ def get_parser():
 	parser.add_argument('-mode',choices=map_choices,default='browse',help='select mode for mapprojection default: %(default)s')
 	parser.add_argument('-ba_prefix',default=None,help='bundle adjust prefix for rpc, or joiner for bundle adjusted pinhole cameras',required=False)
 	parser.add_argument('-cam',default=None,help='camera folder containing list of tsai files for pinhole files',required=False)
-	parser.add_argument('-frame_index',default='None',help="frame index to read frame's actual Ground sampling distance",required=False)
+	parser.add_argument('-frame_index',default=None,help="frame index to read frame's actual Ground sampling distance",required=False)
 	orthomosaic_choice = [1,0]
 	parser.add_argument('-orthomosaic',default=0,type=int,choices=orthomosaic_choice, help="if mode is science, enabling this (1) will also produce a final orthomosaic (default: %(default)s)")
 	parser.add_argument('-copy_rpc',default=0,type=int,choices=orthomosaic_choice,help='if mode is science, enabling this (1) will copy rpc metadata in the orthoimage (default: %(default)s)')
 	data_choices = ['video','triplet']
 	parser.add_argument('-data',default='triplet',choices=data_choices,help="select if mosaicing video or triplet product in science mode (default: %(default)s)")
+	parser.add_argument('-overlap_list', default=None,
+		help='list containing pairs for which feature matching was restricted due during cross track bundle adjustment (not required during basic triplet processing)')
 	return parser
 
 def main():
@@ -104,7 +106,22 @@ def main():
 
     if mode == 'science':
         img_list = images
-        if args.frame_index is not 'None':
+        if args.overlap_list is not None:
+            # need to remove images and cameras which are not optimised during bundle adjustment
+            # read pairs from input overlap list
+            initial_count = len(img_list)
+            with open(args.overlap_list) as f:
+                content = f.readlines()
+            content = [x.strip() for x in content]
+            l_img = [x.split(' ')[0] for x in content]
+            r_img = [x.split(' ')[1] for x in content]
+            total_img = l_img + r_img
+            uniq_idx = np.unique(total_img, return_index=True)[1]
+            img_list = [total_img[idx] for idx in sorted(uniq_idx)]
+
+            print(f"Out of the initial {initial_count} images, {len(img_list)} will be orthorectified using adjusted cameras")
+
+        if args.frame_index is not None:
             frame_index = skysat.parse_frame_index(args.frame_index)
             img_list = [glob.glob(os.path.join(dir,'{}*.tiff'.format(frame)))[0] for frame in frame_index.name.values]
             print("no of images is {}".format(len(img_list)))
@@ -113,7 +130,7 @@ def main():
         session_list = 	[args.session]*len(img_list)
         dem_list = [dem]*len(img_list)
         tr_list = [args.tr]*len(img_list)
-        if args.frame_index is not 'None':
+        if args.frame_index is not None:
             # this hack is for video
             df = skysat.parse_frame_index(args.frame_index)
             trunc_df = df[df['name'].isin(img_prefix)]
@@ -144,26 +161,42 @@ def main():
         if args.orthomosaic == 1:
             print("Will also produce median, weighted average and highest resolution orthomosaic")
             if args.data == 'triplet':
-                for_img_list,nadir_img_list,aft_img_list,for_time,nadir_time,aft_time = skysat.sort_img_list(out_list)
+                # sort images based on timestamps and resolutions
+                img_list, time_list = skysat.sort_img_list(out_list)
                 res_sorted_list = skysat.res_sort(out_list)
-                res_sorted_mosaic = os.path.join(outdir,'{}_{}_{}_finest_orthomosaic.tif'.format(for_time,nadir_time,aft_time))
-                median_mosaic = os.path.join(outdir,'{}_{}_{}_median_orthomosaic.tif'.format(for_time,nadir_time,aft_time))
-                wt_avg_mosaic = os.path.join(outdir,'{}_{}_{}_wt_avg_orthomosaic.tif'.format(for_time,nadir_time,aft_time))
+             
+                # define mosaic prefix containing timestamps of inputs
+                mos_prefix = '_'.join(np.unique([t.split('_')[0] for t in time_list]))+'__'+'_'.join(np.unique([t.split('_')[1] for t in time_list]))
+                
+                # define output filenames
+                res_sorted_mosaic = os.path.join(outdir,'{}_finest_orthomosaic.tif'.format(mos_prefix))
+                median_mosaic = os.path.join(outdir,'{}_median_orthomosaic.tif'.format(mos_prefix))
+                wt_avg_mosaic = os.path.join(outdir,'{}_wt_avg_orthomosaic.tif'.format(mos_prefix))
+                indi_mos_list = [os.path.join(outdir,f'{time}_first_orthomosaic.tif') for time in time_list]
+
+                
                 print("producing finest resolution on top mosaic, per-pixel median and wt_avg mosaic")
-                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], ['None']*3, [None]*3, ['first','median',None],[None]*3,num_cpus=4)
-                res_sorted_log = asp.dem_mosaic(res_sorted_list,res_sorted_mosaic,tr='None',stats='first')
+                all_3_view_mos_logs = p_map(asp.dem_mosaic, [res_sorted_list]*3, [res_sorted_mosaic,median_mosaic,wt_avg_mosaic], 
+                                          ['None']*3, [None]*3, ['first','median',None],[None]*3,num_cpus=4)
+                
                 print("producing idependent mosaic for different views in parallel")
-                for_mosaic = os.path.join(outdir,'{}_for_first_mosaic.tif'.format(for_time))
-                nadir_mosaic = os.path.join(outdir,'{}_nadir_first_mosaic.tif'.format(nadir_time))
-                aft_mosaic = os.path.join(outdir,'{}_aft_first_mosaic.tif'.format(aft_time))
-                # prepare mosaics in parallel
-                indi_mos_log = p_map(asp.dem_mosaic,[for_img_list,nadir_img_list,aft_img_list], [for_mosaic,nadir_mosaic,aft_mosaic], ['None']*3, [None]*3, ['first']*3,[None]*3,num_cpus=4)
+                indi_mos_count = len(time_list)
+                if indi_mos_count>3:
+                    tile_size = 400
+                else:
+                    tile_size = None
+ 
+                indi_mos_log = p_map(asp.dem_mosaic,img_list, indi_mos_list, ['None']*indi_mos_count, [None]*indi_mos_count, 
+                    ['first']*indi_mos_count,[tile_size]*indi_mos_count)
+
+                # write out log files
                 out_log = os.path.join(outdir,'science_mode_ortho_mos.log')
                 total_mos_log = all_3_view_mos_logs+indi_mos_log
                 print("Saving orthomosaic log at {}".format(out_log))
                 with open(out_log,'w') as f:
                     for log in itertools.chain.from_iterable(total_mos_log):
                         f.write(log)
+              
             if args.data == 'video':
                 res_sorted_list = skysat.res_sort(out_list)
                 print("producing orthomasaic with finest on top")
