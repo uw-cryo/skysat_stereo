@@ -339,6 +339,11 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         map_opt.extend(['--t_projwin', xmin,ymin,xmax,ymax])
     if tr:
         map_opt.extend(['--tr',tr])
+
+    # for SkySat and Doves, limit to integer values, and 0 as no-data
+    map_opt.extend(['--nodata-value',str(0)])
+    map_opt.extend(['--ot','UInt16'])
+
     if cam:
         map_args = [dem,img,cam,outfn]
     else:
