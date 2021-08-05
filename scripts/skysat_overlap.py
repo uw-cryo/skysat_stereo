@@ -20,10 +20,11 @@ def getparser():
     parser.add_argument('-percentage', '--percentage', help='percentage_overlap between 0 to 1', required=True)
     parser.add_argument('-outfn','--out_fn',help='Text file containing the overlapping pairs')
     parser.add_argument('-cross_track',action='store_true',help='Also make cross-track pairs')
+    parser.add_argument('-aoi_bbox',help='Return interesecting footprint within this aoi only',default=None)
     return parser
 
 # Global var
-geo_crs = {'init':'EPSG:4326'}
+geo_crs = 'EPSG:4326'
 
 def main():
     #The following block of code is useful for getting a shapefile encompassing the entire subset (Use for clipping DEMs etc)
@@ -59,6 +60,14 @@ def main():
     print ('Local Equal Area coordinate system is : {} \n'.format(local_aea))
     print('Saving bound shapefile at {} \n'.format(out_shp))
     bound_shp.to_file(out_shp,driver='GPKG')
+    
+
+    # condition to check bbox aoi
+    if args.aoi_bbox:
+        bbox = gpd.read_file(args.aoi_bbox)
+        mask = merged_shape.to_crs(bbox.crs).intersects(bbox)
+        img_list = merged_shape[mask].img.values
+
     img_combinations = list(combinations(img_list,2))
     n_comb = len(img_combinations)
     perc_overlap = np.ones(n_comb,dtype=float)*perc_overlap
