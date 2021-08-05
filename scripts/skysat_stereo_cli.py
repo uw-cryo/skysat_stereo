@@ -110,11 +110,15 @@ def main():
         #      f.write(logs)
     else:
         print(f"Writng jobs at {args.job_fn}")
+        print(f"hey typr of job is {type(job_list)}")
         
         with open(args.job_fn,'w') as f:
-            for job in tqdm(job_list):
-                job_str = 'stereo ' + ' '.join(job) + '\n'
-                f.write(job_str)
+            for idx,job in enumerate(tqdm(job_list)):
+                try:                
+                    job_str = 'stereo ' + ' '.join(job) + '\n'
+                    f.write(job_str)
+                except:
+                    continue
     print("Script is complete")
 
 if __name__ == "__main__":
