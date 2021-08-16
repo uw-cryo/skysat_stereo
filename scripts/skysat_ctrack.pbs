@@ -1,0 +1,80 @@
+#PBS -S /bin/csh
+
+#Can be run interactively
+#qsub -N 169823_177845 -v pair=WV01_20110927_1020010016982300_1020010017784500 ~/bin/singlepair.pbs
+
+#Export environmental variables to batch job
+#PBS -V
+
+#Join stdout and stderr
+#PBS -j oe
+
+#Queue name
+#PBS -q long
+
+#Resources
+#PBS -l select=1:model=bro_ele,walltime=6:00:00
+
+#Mail options
+#PBS -m abe
+
+#Group ID
+# #This was NESSF
+# #PBS -W group_list=s1271
+# #Arendt
+# #PBS -W group_list=s1768
+# #FINESST
+## PBS -W group_list=s3224
+# #HMA2
+# PBS -W group_list=s2407
+#Rerunnable (y/n)
+#PBS -r n
+
+#Check to make sure we're given an input pair
+
+unalias cd
+
+if ($?PBS_O_WORKDIR) then
+    cd $PBS_O_WORKDIR
+else
+    setenv PBS_O_WORKDIR `pwd`
+endif
+
+
+set ts = `date +%Y%m%d_%H%M`
+set logdir = $PBS_O_WORKDIR/log
+if (! -d $logdir) mkdir $logdir
+set jobid = `echo $PBS_JOBID | awk -F'.' '{print $1}'`
+set pair = "skysat_ba"
+set logfile = $logdir/${pair}_${ts}_${jobid}.log
+
+echo $logfile
+
+#Wrapper script to run ASP 
+#set script = ./skysat_hardcode.sh
+#set script = ./bundle_adjust_skysat.sh
+#set script = /nobackupp11/sbhusha1/sw/wv_stereo_processing/scripts/new_dg_stereo_SGM.sh 
+
+#Create a local copy of script in output directory, for reference
+#set script_cp = $pair/${script:t:r}_${jobid}.${script:e}
+#cp -pv $script $script_cp
+
+echo "Current directory is:"
+pwd
+echo
+
+#set rpcdem = ../stack_all/*gaussfill-tile-0.tif
+#set rpcdem = /nobackup/deshean/snowex/stereo/gm/orig_products/demcoreg_ref_ASO_dsm/gm_8m_trans-tile-0_gaussfill-tile-0.tif
+#set rpcdem = /nobackup/deshean/salardeuni/20190727_sdi_x/rename/P1BS/sdu_x_3697m_dem.tif
+
+#This was for rerunning with updated rpcdem
+if (! $?rpcdem) then
+    set rpcdem = ""
+endif
+
+#bash $script >& $logfile
+#$script_cp $pair $rpcdem $resol >& $logfile
+
+#$script_cp $pair >& $logfile
+
+parallel --progress -j 40 < $job_fn >& $logfile
