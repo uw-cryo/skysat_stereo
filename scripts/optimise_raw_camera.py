@@ -10,6 +10,7 @@ from pyquaternion import Quaternion
 import argparse
 from pygeotools.lib import iolib,geolib
 import logging
+from pyproj import Transformer
 
 def cam_solve(q1,q2,q3,q4,CX,CY,CZ,cu,cv,fu,fv,pitch,X,Y,Z):
     """
@@ -128,7 +129,15 @@ def main():
         frame_index = pd.read_pickle(f_index)
     logging.info("sample fn {}".format(glob.glob(os.path.join(args.camera_folder,
         '*{}*.tsai'.format(frame_index['name'].values[0])))))
-    cam_list = [glob.glob(os.path.join(args.camera_folder,'*{}*.tsai'.format(os.path.basename(frame))))[0] for frame in frame_index['name'].values]
+    
+    # cam_list = [glob.glob(os.path.join(args.camera_folder,'*{}*.tsai'.format(os.path.basename(frame))))[0] for frame in frame_index['name'].values]
+    cam_list = []
+    for frame in frame_index['name'].values:
+        try:
+            cam_list.append(glob.glob(os.path.join(args.camera_folder,'*{}*.tsai'.format(os.path.basename(frame))))[0])
+        except:
+            continue
+
     if not args.gcp_folder:
         gcp_folder = args.camera_folder
     else:
@@ -150,7 +159,10 @@ def main():
         gcp = pd.read_csv(glob.glob(os.path.join(gcp_folder,'*{}*.gcp'.format(identifier)))[0],header=None,sep=' ')
         im_x,im_y = [gcp[8].values,gcp[9].values]
         lon,lat,ht = [gcp[2].values,gcp[1].values,gcp[3].values]
-        X,Y,Z = geolib.ll2ecef(lon,lat,ht)
+        ecef_proj = 'EPSG:4978'
+        geo_proj = 'EPSG:4326'
+        wgs2ecef = Transformer.from_crs(geo_proj,ecef_proj)
+        X,Y,Z = wgs2ecef.transform(lat,lon,ht)
         CX_idx,CY_idx,CZ_idx = [CX[idx],CY[idx],CZ[idx]]
         q1_idx,q2_idx,q3_idx,q4_idx = [q1[idx],q2[idx],q3[idx],q4[idx]]
         #tpl_int = (q1_idx,q2_idx,q3_idx,q4_idx)
