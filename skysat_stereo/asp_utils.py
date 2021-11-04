@@ -40,9 +40,12 @@ def run_cmd(bin, args, **kw):
     #binpath = os.path.join('/opt/StereoPipeline/bin/',bin)
     call = [binpath,]
     #print(call)
-    call.extend(args)
+    
     #print(call)
     #print(' '.join(call))
+    
+    call.extend(args)
+    #print(call)
     try:
         out = subprocess.check_output(call,encoding='UTF-8')
     except:
@@ -164,7 +167,7 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             cam_gen_opt.extend(['--parse-ecef'])
         cam_gen_opt.extend(['--refine-camera'])
         cam_gen_args = [img]
-        print(cam_gen_opt+cam_gen_args)
+        #print(cam_gen_opt+cam_gen_args)
         out = run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
         return out
 
@@ -220,7 +223,6 @@ def rpc2map (img,imgx,imgy,imgz=0):
     rpc = rpc_from_geotiff(img)
     mx,my = rpc.localization(imgx,imgy,imgz)
     return mx,my
-
 
 def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,lon_lat_lim=None,elevation_limit=None):
     """
@@ -341,8 +343,8 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         map_opt.extend(['--tr',tr])
 
     # for SkySat and Doves, limit to integer values, and 0 as no-data
-    map_opt.extend(['--nodata-value',str(0)])
-    map_opt.extend(['--ot','UInt16'])
+    #map_opt.extend(['--nodata-value',str(0)])
+    #map_opt.extend(['--ot','UInt16'])
 
     if cam:
         map_args = [dem,img,cam,outfn]
@@ -925,5 +927,367 @@ def camera_reprojection_error_stats_df(pixel_error_fn):
     
     # dataframe is good to go
     return stats_df
+
+def produce_m(lon,lat,m_meridian_offset=0):
+    """
+    Produce M matrix which facilitates conversion from Lon-lat (NED) to ECEF coordinates
+    From https://github.com/visionworkbench/visionworkbench/blob/master/src/vw/Cartography/Datum.cc#L249
+    This is known as direction cosie matrix
+    
+    Parameters
+    ------------
+    lon: numeric
+        longitude of spacecraft
+    lat: numeric
+        latitude of spacecraft
+    m_meridian_offset: numeric
+        set to zero
+    Returns
+    -----------
+    R: np.array
+        3 x 3 rotation matrix representing the m-matrix aka direction cosine matrix
+    """
+    if lat < -90:
+        lat = -90
+    if lat > 90:
+        lat = 90
+    
+    rlon = (lon + m_meridian_offset) * (np.pi/180)
+    rlat = lat * (np.pi/180)
+    slat = np.sin(rlat)
+    clat = np.cos(rlat)
+    slon = np.sin(rlon)
+    clon = np.cos(rlon)
+    
+    R = np.ones((3,3),dtype=float)
+    R[0,0] = -slat*clon
+    R[1,0] = -slat*slon
+    R[2,0] = clat
+    R[0,1] = -slon
+    R[1,1] = clon
+    R[2,1] = 0.0
+    R[0,2] = -clon*clat
+    R[1,2] = -slon*clat
+    R[2,2] = -slat
+    return R
+
+def convert_ecef2NED(asp_rotation,lon,lat):
+    """
+    convert rotation matrices from ECEF to North-East-Down convention
+    Parameters
+    -------------
+    asp_rotation: np.array
+        3 x 3 rotation matrix from ASP
+    lon: numeric
+        longitude for computing m matrix
+    lat: numeric
+        latitude for computing m matrix
+    
+    Returns
+    --------------
+    r_ned: np.array
+        3 x 3 NED rotation matrix 
+    """
+    m = produce_m(lon,lat)
+    r_ned = np.matmul(np.linalg.inv(m),asp_rotation)
+    #r_ned = np.matmul(np.transpose(m),asp_rotation)
+    #r_ned = np.matmul(m,asp_rotation)
+    return r_ned
+
+def ned_rotation_from_tsai(tsai_fn):
+    """
+    return yaw pitch and roll angles from a ASP tsai file
+    This is experimental and only tested for one SkySat dataset, will remove this message when get consistent results for other datasets
+    
+    Parameters
+    ------------
+    tsai_fn: str
+        path to tsai file
+    
+    Returns
+    ------------
+    yaw,pitch,roll: numeric
+        yaw pitch and roll angle in degrees (order of rotation assumed: Yaw, Pitch, Roll)
+    """
+    from scipy.spatial.transform import Rotation as R
+  
+    #coordinate conversion step
+    from pyproj import Transformer
+    ecef_proj = 'EPSG:4978'
+    geo_proj = 'EPSG:4326'
+    ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
+    
+    # read tsai files
+    asp_dict = asp.read_tsai_dict(tsai_fn)
+    
+    # get camera position
+    cam_cen = asp_dict['cam_cen_ecef']
+    lat,lon,h = ecef2wgs.transform(*cam_cen)
+    #print(lat,lon)
+    # get camera rotation angle
+    rot_mat = np.reshape(asp_dict['rotation_matrix'],(3,3))
+    
+    #rotate about z axis by 90 degrees
+    #https://math.stackexchange.com/questions/651413/given-the-degrees-to-rotate-around-axis-how-do-you-come-up-with-rotation-matrix
+    rot_z = np.zeros((3,3),float)
+    angle = np.pi/2
+    rot_z[0,0] = np.cos(angle) 
+    rot_z[0,1] = -1 * np.sin(angle)
+    rot_z[1,0] = np.sin(angle)
+    rot_z[1,1] = np.cos(angle)
+    rot_z[2,2] = 1
+    
+    
+    
+    #return np.matmul(rot_z,convert_ecef2NED(rot_mat,lon,lat))
+    return R.from_matrix(np.matmul(rot_z,np.linalg.inv(convert_ecef2NED(rot_mat,lon,lat)))).as_euler('ZYX',degrees=True)
+
+
+def prepare_virtual_gcp(init_reproj_fn,cnet_fn,refdem,out_gcp,dem_crs='EPSG:32644',dh_threshold = 0.75,mask_glac=True):
+    """
+    *** This is experimental and not tested apart from the Chamoli multi-sensor, multi-orbit dataset***
+    Prepare virtual GCP network from initially triangulated pointcloud
+    Parameters
+    ------------
+    init_reproj_fn: str
+        path to initial reprojection error file
+    cnet_fn: str
+        path to initially triangulated control network
+    refdem: str
+        path to refdem
+    out_gcp: str
+        Path to output GCP file
+    dem_crs: str
+        CRS for input DEM 
+        ## This should not be required, we should get rid of this
+    dh_threshold: numeric
+        absolute dh threshold between triangulated points and refrence DEM height to select as virtual GCP
+    mask_glac: bool
+        mask out points within a glacier (**Not implemented rn**)
+    
+        
+    """
+    print("Initiating logic to compute virtual GCP file")
+    
+    print("Step 1: Reading inital reprojection error file......")
+    init_gdf = _pointmap2gdf(init_reproj_fn,proj=dem_crs)
+    
+    print("Step 2: Reading reference DEM........")
+    dem_ds = iolib.fn_getds(refdem)
+    
+    print("Step 3: Sampling heights from reference DEM and computing elevation residual")
+    map_x = init_gdf.geometry.x.values
+    map_y = init_gdf.geometry.y.values
+    init_gdf['dem_height'] = _sample_ndimage(iolib.ds_getma(dem_ds),dem_ds.GetGeoTransform(),map_x,map_y)
+    init_gdf['dh'] = np.abs(init_gdf['dem_height'] - init_gdf['height_above_datum'])
+    
+    print(f"Step 4: Applying absolute input dh threshold of {np.round(dh_threshold,2)} m..............")
+    mask = init_gdf['dh'] <= dh_threshold
+    fltr_gdf = init_gdf[mask]
+    print(f"From total of {len(init_gdf)} points, {len(fltr_gdf)} points fall within dh_threshold ")
+    
+    print("Step 5: Preparing GCPs indices")
+    filtered_idx = fltr_gdf.index.values
+    mask_5_view = fltr_gdf[' num_observations'] >= 5
+    five_view_idx = fltr_gdf[mask_5_view].index.values
+
+    mask_4_view = fltr_gdf[' num_observations'] == 4
+    four_view_idx = fltr_gdf[mask_4_view].index.values
+
+    mask_3_view = fltr_gdf[' num_observations'] == 3
+    three_view_idx = fltr_gdf[mask_3_view].index.values
+
+    mask_2_view = fltr_gdf[' num_observations'] == 2
+    two_view_idx = fltr_gdf[mask_2_view].index.values
+    
+    print("Step 6: Reading control network")
+    with open(cnet_fn,'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    
+    print("Step 7: Writing GCP to disk")
+    #outfn = os.path.splitext(cnet_fn)[0]+'_opt3_gcp.gcp'
+    counter = 1
+
+    view_count = []
+    with open (out_gcp,'w') as f:
+        for idx,line in enumerate(tqdm(content)):
+            if idx not in filtered_idx:
+                continue
+            else:
+
+                num_img = line.count('.tif')
+
+                view_count.append(num_img)
+
+                new_str = f"{counter} {line.split(' ',1)[1]}"
+                if idx in five_view_idx:
+                    #print(new_str)
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 0.5 0.5 0.5 '+new_str.split(' 1 1 1 ')[1]
+
+
+                elif idx in four_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 1.2 1.2 1.2 '+new_str.split(' 1 1 1 ')[1]
+                elif idx in three_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 1.8 1.8 1.8 '+new_str.split(' 1 1 1 ')[1]
+
+                elif idx in two_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 2.2 2.2 2.2 '+new_str.split(' 1 1 1 ')[1]
+
+
+
+                #final_gcp_list.append(new_str)
+                counter = counter + 1
+                f.write(new_str+'\n')
+
+
+# Helper functions for virtual GCP function
+
+def _df2gdf(df,proj="EPSG:32644",sort_ascending=False):
+    #import geopandas as gpd
+    df = df.rename(columns={'# lon':'lon',' lat':'lat',' height_above_datum':'height_above_datum',' mean_residual':'mean_residual'})
+    gdf = gpd.GeoDataFrame(df,
+                           geometry=gpd.points_from_xy(df.lon, df.lat),
+                           crs='EPSG:4326')
+    gdf = gdf.to_crs(proj)
+    if sort_ascending:
+        gdf = gdf.sort_values('mean_residual',ascending=True)
+    return gdf
+
+def _pointmap2gdf(pointmap,proj='EPSG:32644',sort_ascending=False):
+    df = pd.read_csv(pointmap,skiprows=[1])
+    return _df2gdf(df,proj,sort_ascending)
+
+def _mapToPixel(mX, mY, geoTransform):
+    """Convert map coordinates to pixel coordinates based on geotransform
+    
+    Accepts float or NumPy arrays
+    GDAL model used here - upper left corner of upper left pixel for mX, mY (and in GeoTransform)
+    """
+    mX = np.asarray(mX)
+    mY = np.asarray(mY)
+    if geoTransform[2] + geoTransform[4] == 0:
+        pX = ((mX - geoTransform[0]) / geoTransform[1]) - 0.5
+        pY = ((mY - geoTransform[3]) / geoTransform[5]) - 0.5
+    else:
+        pX, pY = applyGeoTransform(mX, mY, invertGeoTransform(geoTransform))
+    #return int(pX), int(pY)
+    return pX, pY
+
+def _sample_ndimage(dem_ma,dem_gt,map_x,map_y,r='bilinear'):
+    """
+    sample values from the dem masked array for the points in map_x, map_y coordinates
+    dem_ma: Masked numpy array, prefer the dem to be conitnous though
+    gt: geotransform of dem/input array
+    map_x: x_coordinate array
+    map_y: y_coordinate array
+    r: resampling algorithm for decimal px location
+    out: array containing sampled values at zip(map_y,map_x)
+    """
+    import scipy.ndimage
+    #convert map points to px points using geotransform information
+    img_x,img_y = _mapToPixel(map_x,map_y,dem_gt)
+    #prepare input for sampling function
+    yx = np.array([img_y,img_x])
+    # sample the array
+    sampled_pts = scipy.ndimage.map_coordinates(dem_ma, yx, order=1,mode='nearest')
+    return sampled_pts
+
+
+def ipfind_ipmatch(img1,img2,subpixel=False,clear_matchfile=True):
+    """
+    Find match points between two images using SIFT operator in ASP
+    Parameters
+    -------------
+    img1: str
+        path to first image
+    img2: str
+        path to second image
+    subpixel: bool
+        if True, coordinates with subpixel precision are returned
+    clear_matchfile: bool
+        if True, will wipe out the ASP produced matchfile from disk
+    Returns
+    --------------
+    match_img1: np.array
+        array containing matchpoints coordinates in img1 as (x,y) tuples
+    match_img2: np.array
+        array containing matchpoints coordinates in img2 as (x,y) tuples
+    """
+    base1 = os.path.splitext(img1)[0]
+    base2 = os.path.splitext(img2)[0]
+    #asp.run_cmd('ipfind', ['--normalize','--ip-per-tile','2000',img1])
+    #asp.run_cmd('ipfind', ['--normalize','--ip-per-tile','2000',img2])
+    asp.run_cmd('ipfind', ['--normalize',img1])
+    asp.run_cmd('ipfind', ['--normalize',img2])
+    ip1 = base1+'.vwip'
+    ip2 = base2+'.vwip'
+    asp.run_cmd('ipmatch',[img1,ip1,img2,ip2])
+    match_fn = base1+'__'+os.path.basename(base2)+'.match'
+    match_img1,match_img2 = read_match_file(match_fn)
+    match_img1 = pd.DataFrame(match_img1)
+    match_img2 = pd.DataFrame(match_img2)
+    os.remove(ip1)
+    os.remove(ip2)
+    if subpixel:
+        match_img1 = np.array(list(zip(match_img1[0].values,match_img1[1].values)))
+        match_img2 = np.array(list(zip(match_img2[0].values,match_img2[1].values)))
+    else:
+        match_img1 = np.array(list(zip(match_img1[2].values,match_img1[3].values)))
+        match_img2 = np.array(list(zip(match_img2[2].values,match_img2[3].values)))
+    if clear_matchfile:
+        os.remove(match_fn)
+    return match_img1,match_img2
+
+
+def read_ip_record(mf):
+    """
+    Read one IP record from the binary match file.
+    #### Reading ip and MP is borrowed from the solution which Amaury Dehecq shared on the ASP mailing list
+    #### All credits to Amaury (amaury.dehecq at univ-grenoble-alpes.fr)
+
+    Information comtained are x, y, xi, yi, orientation, scale, interest, polarity, octave, scale_lvl, desc 
+    (Oleg/Scott to explain?)
+    Input: - mf, file handle to the in put binary file (in 'rb' mode)
+    Output: - iprec, array containing the IP record
+    """
+    x, y = np.frombuffer(mf.read(8), dtype=np.float32)
+    xi, yi = np.frombuffer(mf.read(8), dtype=np.int32)
+    orientation, scale, interest = np.frombuffer(mf.read(12), dtype=np.float32)
+    polarity, = np.frombuffer(mf.read(1), dtype=np.int8)  # or np.bool?
+    octave, scale_lvl = np.frombuffer(mf.read(8), dtype=np.uint32)
+    ndesc, = np.frombuffer(mf.read(8), dtype=np.uint64)
+    desc = np.frombuffer(mf.read(int(ndesc * 4)), dtype=np.float32)
+    iprec = [x, y, xi, yi, orientation, scale, interest, polarity, octave, scale_lvl, ndesc]
+    iprec.extend(desc)
+    return iprec
+
+def read_match_file(match_file):
+    """
+    Read a full binary match file. First two 8-bits contain the number of IPs in each image. Then contains the record for each IP, image1 first, then image2.
+    #### Reading ip and MP is borrowed from the solution which Amaury Dehecq shared on the ASP mailing list
+    #### All credits to Amaury (amaury.dehecq at univ-grenoble-alpes.fr)
+
+    Input: 
+    - match_file: str, path to the match file
+    Outputs:
+    - two arrays, containing the IP records for image1 and image2.
+    """
+
+    # Open binary file in read mode
+    mf = open(match_file,'rb')
+
+    # Read record length
+    size1 = np.frombuffer(mf.read(8), dtype=np.uint64)[0]
+    size2 = np.frombuffer(mf.read(8), dtype=np.uint64)[0]
+
+    # Read record for each image
+    im1_ip = [read_ip_record(mf) for i in range(size1)]
+    im2_ip = [read_ip_record(mf) for i in range(size2)]
+
+    # Close file
+    mf.close()
+    
+    return im1_ip, im2_ip
 
 
