@@ -4,7 +4,7 @@ from pygeotools.lib import iolib,geolib,malib
 import os,sys,glob,shutil,psutil
 import pandas as pd
 import geopandas as gpd
-from pyproj import Proj, transform
+from pyproj import Proj, transform, Transformer
 from rpcm import rpc_from_geotiff
 from distutils.spawn import find_executable
 import subprocess
@@ -52,6 +52,7 @@ def run_cmd(bin, args, **kw):
         out = "the command {} failed to run, see corresponding asp log".format(call)
     return out
 
+
 def read_tsai_dict(tsai):
     """
     read tsai frame model from asp and return a python dictionary containing the parameters
@@ -79,7 +80,12 @@ def read_tsai_dict(tsai):
     rot = content[10].split(' = ',10)[1].split(' ')
     rot_mat = [np.float(x) for x in rot] # rotation matrix for camera to world coordinates transformation
     pitch = np.float(content[11].split(' = ',10)[1]) # pixel pitch
-    cam_cen_lat_lon = geolib.ecef2ll(cam_cen[0],cam_cen[1],cam_cen[2]) # camera center coordinates in geographic coordinates
+    
+    ecef_proj = 'EPSG:4978'
+    geo_proj = 'EPSG:4326'
+    ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
+    cam_cen_lat_lon = ecef2wgs.transform(cam_cen[0],cam_cen[1],cam_cen[2]) # this returns lat, lon and height
+    # cam_cen_lat_lon = geolib.ecef2ll(cam_cen[0],cam_cen[1],cam_cen[2]) # camera center coordinates in geographic coordinates
     tsai_dict = {'camera':camera,'focal_length':(fu,fv),'optical_center':(cu,cv),'cam_cen_ecef':cam_cen,'cam_cen_wgs':cam_cen_lat_lon,'rotation_matrix':rot_mat,'pitch':pitch}
     return tsai_dict
 
