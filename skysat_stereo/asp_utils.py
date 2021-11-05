@@ -1145,7 +1145,11 @@ def prepare_virtual_gcp(init_reproj_fn,cnet_fn,refdem,out_gcp,dem_crs='EPSG:3264
                 #final_gcp_list.append(new_str)
                 counter = counter + 1
                 f.write(new_str+'\n')
-
+    # save a copy of initial parameters incase needed later
+    out_reproj_fn = os.path.splitext(init_reproj_fn)[0]+'_gcp_material.csv'
+    out_cnet_fn = os.path.splitext(cnet_fn)[0]+'_gcp_material.csv'
+    shutil.copy2(init_reproj_fn,out_reproj_fn)
+    shutil.copy2(cnet_fn,out_cnet_fn)
 
 # Helper functions for virtual GCP function
 
@@ -1297,3 +1301,41 @@ def read_match_file(match_file):
     return im1_ip, im2_ip
 
 
+def virtual_gcp_ba(img_list,cam_list,overlap_list,session,ba_prefix,
+                   refdem,out_gcp,dem_crs='EPSG:32644',dh_threshold = 0.75,mask_glac=True,
+                  prepare_matchfiles=False):
+    # step 1: prepare matchfiles
+    ## Assume for now exists in a directory
+    
+    # step 2: run bundle adjust with zero iterations and only 1 pass
+    ## this will produce the pointmap file and the cnet.csv file #init_reproj_fn,#cnet_fn
+    cnet_ba_opt =  get_ba_opts(
+            ba_prefix, session=session,num_iterations=0,num_pass=1,overlap_list=overlap_list,camera_weight=0)
+    ba_args = img_list + cam_list
+    print("Building control network and pointmap files for virtual GCP creation")
+    run_cmd('bundle_adjust', cnet_ba_opt + ba_args)
+    try:
+        cnet_fn = glob.glob(ba_prefix+'*cnet.csv')[0]
+    except:
+        print("No control network found, exiting")
+        sys.exit()
+    
+    try:
+        init_reproj_fn = glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv')[0]
+    except:
+        print("No initial error pointmap found,exiting")
+        sys.exit()
+    
+
+    # step 3: Run the function from above which will generate the gcp
+    
+    prepare_virtual_gcp(init_reproj_fn,cnet_fn,refdem,out_gcp,dem_crs,dh_threshold,mask_glac)
+    
+    # Finally run the bundle adjustment with the GCPs
+    gcp_bundle_adjust_opt = get_ba_opts(
+            ba_prefix, session=session,num_iterations=400,num_pass=1,overlap_list=overlap_list,camera_weight=0)
+    print("Running final bundle adjustment using virtual GCPs")
+    ba_args = img_list + cam_list + [outgcp]
+    run_cmd('bundle_adjust',gcp_bundle_adjust_opt + ba_args)
+
+    print("Tada, you are done !!")
