@@ -349,11 +349,14 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         map_opt.extend(['--tr',tr])
 
     # for SkySat and Doves, limit to integer values, and 0 as no-data
-    #map_opt.extend(['--nodata-value',str(0)])
-    #map_opt.extend(['--ot','UInt16'])
+    map_opt.extend(['--nodata-value',str(0)])
+    map_opt.extend(['--ot','UInt16'])
 
     if cam:
         map_args = [dem,img,cam,outfn]
+        if '.xml' in cam:
+            print("Input is DG, will use all threads")
+            map_opt.extend(['--threads',str(iolib.cpu_count())])
     else:
         map_args = [dem,img,outfn]
     
@@ -419,7 +422,7 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
     return out
 
-def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
+def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode='asp_bm',spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
     """
     prepares stereo cmd for ASP
     See ASP's stereo documentation here: https://stereopipeline.readthedocs.io/en/latest/correlation.html
@@ -447,8 +450,8 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
         tempelate window size for stereo correlation (default is [21,21])
     rfne_kernel: list
         tempelate window size for sub-pixel optimization (default is [35,35])
-    stereo_mode: int
-        0 for block matching, 1 for SGM, 2 for MGM (default is 0)
+    stereo_mode: str
+        asp_bm for block matching, asp_sgm for SGM, asp_mgm for MGM (default is asp_bm)
     spm: int
         subpixel mode, 0 for parabolic localisation, 1 for adaptavie affine and 2 for simple affine (default is 1)
     cost_mode: int
@@ -487,7 +490,7 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     # stereo_corr_args:
     # parallel stereo is generally not required with input SkySat imagery
     # So all the mgm/sgm calls are done without it.
-    stereo_opt.extend(['--stereo-algorithm', str(stereo_mode)])
+    stereo_opt.extend(['--stereo-algorithm', stereo_mode])
     # the kernel size would depend on the algorithm
     stereo_opt.extend(['--corr-kernel', str(corr_kernel[0]), str(corr_kernel[1])])
     stereo_opt.extend(['--corr-tile-size', str(corr_tile_size)])

@@ -6,10 +6,10 @@ import geopandas as gpd
 from skysat_stereo import asp_utils
 import numpy as np
 import pandas as pd
-import gdal
+from osgeo import gdal
 import os,sys,glob
 from shapely import wkt
-import gdalconst
+#import gdalconst
 import re
 from tqdm import tqdm
 from datetime import datetime
@@ -275,7 +275,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
         stereo_args = [ref_image] + source_images + [ref_camera] + source_cameras
         if block == 1:
             spm = 2
-            stereo_mode = 0
+            stereo_mode = 'asp_bm'
             corr_tile_size = 1024
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -287,7 +287,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
                 lv = 5
         else:
             spm = 2
-            stereo_mode = 2
+            stereo_mode = 'asp_mgm'
             corr_tile_size = 6400
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -455,7 +455,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         if block == 1:
             print("Performing block matching")
             spm = 2 #Bayes EM
-            stereo_mode = 0 #Block matching
+            stereo_mode = 'asp_bm' #Block matching
             cost_mode = 2 #NCC
             corr_tile_size = 1024
             if texture == 'low':
@@ -469,7 +469,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         else:
             cost_mode = 4 #Preffered MGM cost-mode
             spm = 2 # Bayes EM
-            stereo_mode = 2 #MGM
+            stereo_mode = 'asp_mgm' #MGM
             corr_tile_size = 6400
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -594,7 +594,7 @@ def prepare_stereo_jobs_wrapper(img1,img2,img_list,outfolder,t,threads=2,crop_ma
         print("Performing block matching")
         xcorr = 2
         spm = 2
-        stereo_mode = 0
+        stereo_mode = 'asp_bm'
         cost_mode = 2
         corr_tile_size = 1024
         if texture == 'low':
@@ -610,7 +610,7 @@ def prepare_stereo_jobs_wrapper(img1,img2,img_list,outfolder,t,threads=2,crop_ma
         xcorr = -1
         cost_mode = 4
         spm = 9
-        stereo_mode = 2
+        stereo_mode = 'asp_mgm'
         corr_tile_size = 6400
         if texture == 'low':
             rfne_kernel = [21, 21]
