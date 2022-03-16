@@ -79,4 +79,76 @@ def prepare_stereopair_list(img_folder,out_fn,aoi_bbox=None,cross_track=False):
     
     return stereo_only_df, out_df
 
+def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
+    """
+    """
+    if not os.path.exists(outdir):
+        try:
+            os.makedir(outdir)
+        except:
+            os.makedirs(outdir)
+    if mode == 'video':
+        sampling = args.video_sampling_mode
+        frame_index = skysat.parse_frame_index(frame_index,True)
+        product_level = 'l1a'
+        num_samples = len(frame_index)
+        frames = frame_index.name.values
+        outdf = os.path.join(outdir,os.path.basename(frame_index))
+        if sampling == 'sampling_interval':
+            print("Hardcoded sampling interval results in frame exclusion at the end of the video sequence based on step size, better to chose the num_images mode and the program will equally distribute accordingly")
+            idx = np.arange(0,num_samples,sampler)
+            outdf = '{}_sampling_inteval_{}.csv'.format(os.path.splitext(outdf)[0],sampler)
+        else:
+            print("Sampling {} from {} of the input video sequence".format(sampler,num_samples))
+            idx = np.linspace(0,num_samples-1,sampler,dtype=int)
+            outdf = '{}_sampling_inteval_aprox{}.csv'.format(os.path.splitext(outdf)[0],idx[1]-idx[0])
+        
+        sub_sampled_frames = frames[idx]
+        sub_df = frame_index[frame_index['name'].isin(list(sub_sampled_frames))]
+        sub_df.to_csv(outdf,sep=',',index=False)
+        #this is camera/gcp initialisation
+        n = len(sub_sampled_frames)
+        img_list = [glob.glob(os.path.join(img_folder,'{}*.tiff'.format(frame)))[0] for frame in sub_sampled_frames]
+        pitch = [1]*n
+        out_fn = [os.path.join(outdir,'{}_frame_idx.tsai'.format(frame)) for frame in sub_sampled_frames]
+        out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
+        frame_index = [args.frame_index]*n
+       	camera = [None]*n
+        gcp_factor = 4
+
+    elif mode == 'triplet':
+        df = pd.read_pickle(args.overlap_pkl)
+        img_list = list(np.unique(np.array(list(df.img1.values)+list(df.img2.values))))
+        img_list = [os.path.splitext(os.path.basename(img))[0] for img in img_list]
+        cam_list = [glob.glob(os.path.join(img_folder,'{}*.tif'.format(img)))[0] for img in img_list]
+        n = len(img_list)
+        if args.product_level == 'l1b':
+            pitch = [0.8]*n
+        else:
+            pitch = [1.0]*n
+        out_fn = [os.path.join(outdir,'{}_rpc.tsai'.format(frame)) for frame in img_list]
+        out_gcp = [os.path.join(outdir,'{}_rpc.gcp'.format(frame)) for frame in img_list]
+        camera = cam_list
+        frame_index = [None]*n
+        img_list = cam_list
+        gcp_factor = 8
+
+    fl = [553846.153846]*n
+    cx = [1280]*n
+    cy = [540]*n
+    dem = args.dem
+    ht_datum = [malib.get_stats_dict(iolib.fn_getma(dem))['median']]*n # use this value for height where DEM has no-data
+    gcp_std = [1]*n
+    datum = ['WGS84']*n
+    refdem = [dem]*n
+    n_proc = 30
+    #n_proc = cpu_count()
+    print("Starting camera resection procedure")
+    cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index,num_cpus = n_proc)
+    print("writing gcp with basename removed")
+    # count expexted gcp 
+    print(f"Total expected GCP {gcp_factor*n}")    
+    asp.clean_gcp(out_gcp,outdir)
+    
+
 
