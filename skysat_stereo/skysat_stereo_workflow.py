@@ -151,4 +151,70 @@ def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
     asp.clean_gcp(out_gcp,outdir)
     
 
+def execute_skysat_stereo(img,mode,session,ba_prefix=None,overlap_list_fn,frame_index,dem,texture,
+    sampling_interval,cam_folder,outfol,writeout_only=False,mvs=0,block=1,full_extent=1,
+    entry_point=0,threads=2,overlap_pkl=None,job_fn=None):
+    """
+    """
+    img = os.path.abspath(img)
+    try:
+        img_list = sorted(glob.glob(os.path.join(img, '*.tif')))
+        temp = img_list[1]
+    except BaseException:
+        img_list = sorted(glob.glob(os.path.join(img, '*.tiff')))
+    if len(img_list) == 0:
+        print("No images in the specified folder, exiting")
+        sys.exit()
 
+    if mode == 'video':
+        # assume for now that we are still operating on a fixed image interval method
+        # can accomodate different convergence angle function method here.
+        frame_gdf = skysat.parse_frame_index(frame_index)
+        # for now hardcording sgm,mgm,kernel params, should accept as inputs.
+        # Maybe discuss with David with these issues/decisions when the overall
+        # system is in place
+        if mvs == 1:
+            job_list = skysat.video_mvs(img,t=session,cam_fol=cam_fol,ba_prefix=ba_prefix,dem=dem,
+                           sampling_interval=sampling_interval,texture=texture,
+                           outfol=outfol,block=block,frame_index=frame_gdf)
+
+        else:
+            if full_extent == 1:
+                full_extent = True
+            else:
+                full_extent = False
+            job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=cam_fol,ba_prefix=ba_prefix,
+                dem=dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol,block=block,
+                frame_index=frame_gdf,full_extent=full_extent,entry_point=entry_point)
+    elif mode == 'triplet':
+        if crop_map == 1:
+            crop_map = True
+        else: 
+            crop_map = False
+            
+        job_list = skysat.triplet_stereo_job_list(cross_track=cross_track,t=session,
+            threads = threads,overlap_list=overlap_pkl, img_list=img_list, ba_prefix=ba_prefix, 
+            cam_fol=cam_fol, dem=dem, crop_map=crop_map,texture=texture, outfol=outfol, block=block,
+            entry_point=entry_point)
+    if not writeout_only:
+        # decide on number of processes
+        # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
+        # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
+        # next build should accept no of jobs and stereo threads as inputs
+    
+        print(job_list[0])
+        n_cpu = iolib.cpu_count()
+        # no of parallel jobs with user specified threads per job
+        jobs = int(n_cpu/args.threads)
+        stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
+        stereo_log_fn = os.path.join(outfol,'stereo_log.log')
+        print("Consolidated stereo log saved at {}".format(stereo_log_fn))
+    else:
+        print(f"Writng jobs at {job_fn}")
+        with open(args.job_fn,'w') as f:
+            for idx,job in enumerate(tqdm(job_list)):
+                try:                
+                    job_str = 'stereo ' + ' '.join(job) + '\n'
+                    f.write(job_str)
+                except:
+                    continue
