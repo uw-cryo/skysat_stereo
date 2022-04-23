@@ -8,7 +8,7 @@ import geopandas as gpd
 from distutils.spawn import find_executable
 from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
-
+from skysat_stereo import skysat_stereo_workflow as workflow
 
 """
 Script for running the full pipeline based on workflow described in ISPRS 2020 submission
@@ -141,8 +141,8 @@ def main():
         # Step 1 Compute overlapping pairs
         # Inputs: Image directory, minimum overlap percentage 
         overlap_perc = 0.01 # 1 percent essentially
-        cmd = ['-img_folder',img_folder,'-percentage',str(overlap_perc),'-outfn',overlap_full_txt]
-        asp.run_cmd('skysat_overlap.py',cmd)
+        workflow.prepare_stereopair_list(img_folder,overlap_perc,overlap_full_txt)
+        
 
     print("Computing Target UTM zones for orthorectification")
     gdf = gpd.read_file(bound_fn)
