@@ -157,13 +157,12 @@ def main():
 
     print("Cropping reference DEMs to extent of SkySat footprint + 1 km buffer")
     misc.clip_raster_by_shp_disk(coreg_dem,bound_buffer_fn)
-    
-    asp.run_cmd('trim_ndv.py',[os.path.splitext(coreg_dem)[0]+'_shpclip.tif'])
+    misc.ndvtrim_function(os.path.splitext(coreg_dem)[0]+'_shpclip.tif')
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
+
     if ortho_dem != coreg_dem:
         misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
-        
-        asp.run_cmd('trim_ndv.py',[os.path.splitext(ortho_dem)[0]+'_shpclip.tif'])
+        misc.ndvtrim_function(os.path.splitext(ortho_dem)[0]+'_shpclip.tif')
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:
         ortho_dem = coreg_dem
