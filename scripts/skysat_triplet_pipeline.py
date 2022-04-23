@@ -156,12 +156,13 @@ def main():
         gdf_proj.to_file(bound_buffer_fn,driver='GPKG')
 
     print("Cropping reference DEMs to extent of SkySat footprint + 1 km buffer")
-    asp.run_cmd('clip_raster_by_shp.py',[coreg_dem,bound_buffer_fn])
+    misc.clip_raster_by_shp_disk(coreg_dem,bound_buffer_fn)
+    
     asp.run_cmd('trim_ndv.py',[os.path.splitext(coreg_dem)[0]+'_shpclip.tif'])
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
     if ortho_dem != coreg_dem:
-        clip_log = asp.run_cmd('clip_raster_by_shp.py',[ortho_dem,bound_buffer_fn])
-        print(clip_log)
+        misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
+        
         asp.run_cmd('trim_ndv.py',[os.path.splitext(ortho_dem)[0]+'_shpclip.tif'])
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:

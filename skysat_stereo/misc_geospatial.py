@@ -7,7 +7,7 @@ import pandas as pd
 import geopandas as gpd
 from imview import pltlib
 import matplotlib.pyplot as plt
-from pygeotools.lib import iolib,warplib
+from pygeotools.lib import iolib,geolib,warplib
 
 def shp_merger(shplist):
     """
@@ -56,3 +56,19 @@ def plot_composite_fig(ortho,dem,count,nmad,outfn,product='triplet'):
     pltlib.iv(nmad,ax=ax[3],cmap='inferno',clim=(0,10),label='Elevation NMAD (m)',skinny=False)
     plt.tight_layout()
     f.savefig(outfn,dpi=300,bbox_inches='tight',pad_inches=0.1)
+
+def clip_raster_by_shp_disk(r_fn,shp_fn,invert=False):
+    """
+    # this is a lightweight version of directly being used from https://github.com/dshean/pygeotools/blob/master/pygeotools/clip_raster_by_shp.py
+    # meant to limit subprocess calls
+    """
+    if not os.path.exists(r_fn):
+        sys.exit("Unable to find r_fn: %s" % r_fn)
+    if not os.path.exists(shp_fn):
+        sys.exit("Unable to find shp_fn: %s" % shp_fn)
+     #Do the clipping
+    r, r_ds = geolib.raster_shpclip(r_fn, shp_fn, invert)
+    out_fn = os.path.splitext(r_fn)[0]+'_shpclip.tif'
+    iolib.writeGTiff(r, out_fn, r_ds)
+
+
