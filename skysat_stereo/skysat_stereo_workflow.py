@@ -396,3 +396,72 @@ def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
                     f.write(job_str)
                 except:
                     continue
+
+                    
+def grdding_wrapper(pc_list,tr,tsrs=None):
+    if tsrs is None:
+        print("Projected Target CRS not provided, reading from the first point cloud")
+        
+        #fetch the PC-center.txt file instead
+        # should probably make this default after more tests and confirmation with Oleg
+        pc_center = os.path.splitext(pc_list[0])[0]+'-center.txt'
+        with open(pc_center,'r') as f:
+            content = f.readlines()
+        X,Y,Z = [np.float(x) for x in content[0].split(' ')[:-1]]
+        ecef_proj = 'EPSG:4978'
+        geo_proj = 'EPSG:4326'
+        ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
+        clat,clon,h = ecef2wgs.transform(X,Y,Z)
+        epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
+        print(f"Detected EPSG code from point cloud {epsg_code}") 
+        tsrs = epsg_code
+    n_cpu = iolib.cpu_count()    
+    point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs,threads=1)
+    job_list = [point2dem_opts + [pc] for pc in pc_list]
+    p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
+    print(p2dem_log)
+    
+    
+def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
+                             align,trans_only=0,initial_align=None):
+    if trans_only == 0:
+        trans_only = False
+    else:
+        trans_only = True
+    asp.dem_align(ref_dem,source_dem,max_displacement,outprefix,align,
+                  trans_only,threads=iolib.cpu_count())
+    
+def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,
+                            trans_only=0):
+    outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
+    f trans_only == 0:
+        trans_only = False
+    else:
+        trans_only = True
+    n_source = len(source_dem_list)
+    initial_align = [initial_align]*n_source
+    ref_dem_list=[ref_dem] * n_source
+    max_disp_list=[max_displacement] * n_source
+    align_list=[align] * n_source
+    trans_list=[trans_only] * n_source
+    p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,
+           align_list,trans_list,[1]*n_source,initial_align,num_cpus = iolib.cpu_count())
+    
+def align_cameras_wrapper(input_camera_list,transform_txt,outfolder,rpc=0,dem='None',img_list=None):
+    n_cam=len(input_camera_list)
+    if (rpc == 1) & (dem != 'None'):
+        print("Will also write RPC files")
+        rpc = True
+    else:
+        dem = None
+        img_list = [None] * n_cam
+        rpc = False
+    transform_list = [transform_txt]*n_cam
+    outfolder = [outfolder] * n_cam
+    write = [True] * n_cam
+    rpc = [rpc] * n_cam
+    dem = [dem] * n_cam
+    
+    p_umap(asp.align_cameras,input_camera_list,transform_list,outfolder,write,rpc,dem,
+           img_list,num_cpus = iolib.cpu_count())
+    
