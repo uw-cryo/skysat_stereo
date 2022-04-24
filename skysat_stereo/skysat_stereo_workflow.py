@@ -5,6 +5,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 from pygeotools.lib import iolib,malib
+from tqdm import tqdm
 from p_tqdm import p_umap, p_map
 from skysat_stereo import skysat
 from skysat_stereo import asp_utils as asp
@@ -328,9 +329,9 @@ def execute_skysat_orhtorectification(images,outdir,dem='WGS84',tr=None,tsrs=Non
                     for log in all_3_view_mos_logs:
                         f.write(log)
 
-def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,texture,
-    sampling_interval,cam_folder,outfol,ba_prefix=None,writeout_only=False,mvs=0,block=1,full_extent=1,
-    entry_point=0,threads=2,overlap_pkl=None,job_fn=None):
+def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
+    sampling_interval=None,cam_folder=None,ba_prefix=None,writeout_only=False,mvs=0,block=1,crop_map=0,
+    full_extent=1,entry_point=0,threads=2,overlap_pkl=None,frame_index=None,job_fn=None,cross_track=False):
     """
     """
     img = os.path.abspath(img)
@@ -351,7 +352,7 @@ def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,textu
         # Maybe discuss with David with these issues/decisions when the overall
         # system is in place
         if mvs == 1:
-            job_list = skysat.video_mvs(img,t=session,cam_fol=cam_fol,ba_prefix=ba_prefix,dem=dem,
+            job_list = skysat.video_mvs(img,t=session,cam_fol=cam_folder,ba_prefix=ba_prefix,dem=dem,
                            sampling_interval=sampling_interval,texture=texture,
                            outfol=outfol,block=block,frame_index=frame_gdf)
 
@@ -360,7 +361,7 @@ def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,textu
                 full_extent = True
             else:
                 full_extent = False
-            job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=cam_fol,ba_prefix=ba_prefix,
+            job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=cam_folder,ba_prefix=ba_prefix,
                 dem=dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol,block=block,
                 frame_index=frame_gdf,full_extent=full_extent,entry_point=entry_point)
     elif mode == 'triplet':
@@ -371,7 +372,7 @@ def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,textu
             
         job_list = skysat.triplet_stereo_job_list(cross_track=cross_track,t=session,
             threads = threads,overlap_list=overlap_pkl, img_list=img_list, ba_prefix=ba_prefix, 
-            cam_fol=cam_fol, dem=dem, crop_map=crop_map,texture=texture, outfol=outfol, block=block,
+            cam_fol=cam_folder, dem=dem, crop_map=crop_map,texture=texture, outfol=outfol, block=block,
             entry_point=entry_point)
     if not writeout_only:
         # decide on number of processes
@@ -382,13 +383,13 @@ def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,textu
         print(job_list[0])
         n_cpu = iolib.cpu_count()
         # no of parallel jobs with user specified threads per job
-        jobs = int(n_cpu/args.threads)
+        jobs = int(n_cpu/threads)
         stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
         stereo_log_fn = os.path.join(outfol,'stereo_log.log')
         print("Consolidated stereo log saved at {}".format(stereo_log_fn))
     else:
         print(f"Writng jobs at {job_fn}")
-        with open(args.job_fn,'w') as f:
+        with open(job_fn,'w') as f:
             for idx,job in enumerate(tqdm(job_list)):
                 try:                
                     job_str = 'stereo ' + ' '.join(job) + '\n'
