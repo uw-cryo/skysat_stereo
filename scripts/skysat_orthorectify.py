@@ -64,11 +64,14 @@ def main():
         aft_out_list = [os.path.join(aft_out_dir,os.path.splitext(os.path.basename(img))[0]+'_browse_map.tif') for img in aft_img_list]
         for_count,nadir_count,aft_count = [len(for_img_list), len(nadir_img_list), len(aft_img_list)]
         print("Performing orthorectification for forward images {}".format(for_time))
-        for_map_log = p_map(asp.mapproject,for_img_list,for_out_list,[args.session]*for_count,['WGS84']*for_count,[None]*for_count,['EPSG:4326']*for_count,[None]*for_count,[None]*for_count)
+        for_map_log = p_map(asp.mapproject,for_img_list,for_out_list,[args.session]*for_count,['WGS84']*for_count,[None]*for_count,
+            ['EPSG:4326']*for_count,[None]*for_count,[None]*for_count,[None]*for_count)
         print("Performing orthorectification for nadir images {}".format(nadir_time))
-        nadir_map_log = p_map(asp.mapproject,nadir_img_list,nadir_out_list,[args.session]*nadir_count,['WGS84']*nadir_count,[None]*nadir_count,['EPSG:4326']*nadir_count,[None]*nadir_count,[None]*nadir_count)
+        nadir_map_log = p_map(asp.mapproject,nadir_img_list,nadir_out_list,[args.session]*nadir_count,['WGS84']*nadir_count,[None]*nadir_count,
+            ['EPSG:4326']*nadir_count,[None]*nadir_count,[None]*nadir_count,[None]*nadir_count)
         print("Performing orthorectification for aft images {}".format(aft_time))
-        aft_map_log = p_map(asp.mapproject,aft_img_list,aft_out_list,[args.session]*aft_count,['WGS84']*aft_count,[None]*aft_count,['EPSG:4326']*aft_count,[None]*aft_count,[None]*aft_count)
+        aft_map_log = p_map(asp.mapproject,aft_img_list,aft_out_list,[args.session]*aft_count,['WGS84']*aft_count,[None]*aft_count,
+            ['EPSG:4326']*aft_count,[None]*aft_count,[None]*aft_count,[None]*aft_count)
         ortho_log = os.path.join(outdir,'low_res_ortho.log')
         print("Orthorectification log saved at {}".format(ortho_log))
         with open(ortho_log,'w') as f:
@@ -84,11 +87,11 @@ def main():
         aft_out_mos = os.path.join(outdir,'aft_map_mos_{}m.tif'.format(tr))
         aft_map_list = sorted(glob.glob(os.path.join(aft_out_dir,'*.tif')))
         print("Preparing forward browse orthomosaic")
-        for_mos_log = asp.dem_mosaic(for_map_list,for_out_mos,tr,tsrs,'first',None)
+        for_mos_log = asp.dem_mosaic(for_map_list,for_out_mos,tr,tsrs,stats='first',tile_size=None)
         print("Preparing nadir browse orthomosaic")
-        nadir_mos_log = asp.dem_mosaic(nadir_map_list, nadir_out_mos, tr, tsrs, 'first',None)
+        nadir_mos_log = asp.dem_mosaic(nadir_map_list, nadir_out_mos, tr, tsrs,stats='first',tile_size=None)
         print("Preparing aft browse orthomosaic")
-        aft_mos_log = asp.dem_mosaic(aft_map_list, aft_out_mos, tr, tsrs, 'first',None)
+        aft_mos_log = asp.dem_mosaic(aft_map_list, aft_out_mos, tr, tsrs,stats='first',tile_size=None)
         ## delete temporary files
         if del_opt:
             [shutil.rmtree(x) for x in [for_out_dir,nadir_out_dir,aft_out_dir]]
@@ -148,8 +151,10 @@ def main():
             if ba_prefix:
                 # not yet implemented
                 ba_prefix_list = [ba_prefix]*len(img_list)
+            
         print("Mapping given images")
-        ortho_logs = p_map(asp.mapproject,img_list,out_list,session_list,dem_list,tr_list,srs_list,cam_list,num_cpus=int(cpu_count()/4))
+        ortho_logs = p_map(asp.mapproject,img_list,out_list,session_list,dem_list,tr_list,srs_list,cam_list,
+            [None]*len(img_list),[None]*len(img_list),num_cpus=int(cpu_count()/4))
         ortho_log = os.path.join(outdir,'ortho.log')
         print("Saving Orthorectification log at {}".format(ortho_log))
         with open(ortho_log,'w') as f:
