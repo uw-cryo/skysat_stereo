@@ -4,16 +4,14 @@ import os,sys,glob
 import numpy as np
 from skysat_stereo import asp_utils as asp
 from skysat_stereo import skysat
+from skysat_stereo import skysat_stereo_workflow as workflow
 from p_tqdm import p_map,p_umap
 import psutil
 import argparse
 from rpcm import geo
 from pygeotools.lib import iolib,geolib
-import osr
-from pyproj import Transformer
 
-# TODO:
-# Determine best parameters for RPC generation
+
 
 def get_parser():
         parser = argparse.ArgumentParser(description="utility to grid and register DEMs, pinhole cameras to a referece DEM, using ASP's ICP algorithm")
@@ -42,92 +40,22 @@ def get_parser():
         parser.add_argument('-dem', default='None', help='DEM used for generating RPC')
         parser.add_argument('-img_list', nargs='*', help='list of images for which RPC will be generated')
         return parser
+    
 
 def main():
     parser = get_parser()
     args = parser.parse_args()
-    # comput number of physical and threaded cores
-    n_cpu = psutil.cpu_count(logical=False)
-    n_cpu_thread = psutil.cpu_count(logical=True)
     mode = args.mode
-    pc_list = args.point_cloud_list
     if mode == 'gridding_only':
-        tr = args.tr
-        if args.tsrs is not None:
-            tsrs = args.tsrs
-        else:
-            print("Projected Target CRS not provided, reading from the first point cloud")
-            
-            #fetch the PC-center.txt file instead
-            # should probably make this default after more tests and confirmation with Oleg
-            pc_center = os.path.splitext(pc_list[0])[0]+'-center.txt'
-            with open(pc_center,'r') as f:
-                content = f.readlines()
-            X,Y,Z = [np.float(x) for x in content[0].split(' ')[:-1]]
-            ecef_proj = 'EPSG:4978'
-            geo_proj = 'EPSG:4326'
-            ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
-            clat,clon,h = ecef2wgs.transform(X,Y,Z)
-            epsg_code = f'EPSG:{geo.compute_epsg(clon,clat)}'
-            print(f"Detected EPSG code from point cloud {epsg_code}") 
-            tsrs = epsg_code
-     
-        point2dem_opts = asp.get_point2dem_opts(tr=tr, tsrs=tsrs,threads=1)
-        job_list = [point2dem_opts + [pc] for pc in pc_list]
-        p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
-        print(p2dem_log)
-    if mode == 'classic_dem_align':
-        ref_dem=args.refdem
-        source_dem=args.source_dem
-        max_displacement=args.max_displacement
-        outprefix=args.outprefix
-        align=args.align
-        if args.trans_only == 0:
-            trans_only=False
-        else:
-            trans_only=True
-        asp.dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only,threads=n_cpu)
-    if mode == 'multi_align':
-        """ Align multiple DEMs to a single source DEM """
-        ref_dem=args.refdem
-        source_dem_list=args.source_dem_list
-        max_displacement=args.max_displacement
-        
-        outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
-        align=args.align
-        if args.trans_only == 0:
-            trans_only=False
-        else:
-            trans_only=True
-        n_source=len(source_dem_list)
-        initial_align = [args.initial_align] * n_source
-        ref_dem_list=[ref_dem] * n_source
-        max_disp_list=[max_displacement] * n_source
-        align_list=[align] * n_source
-        trans_list=[trans_only] * n_source
-        p_umap(asp.dem_align,ref_dem_list,source_dem_list,max_disp_list,outprefix_list,align_list,trans_list,[1]*n_source,initial_align,num_cpus = n_cpu_thread)
-    if mode == 'align_cameras':
-        transform_txt = args.transform
-        input_camera_list = args.cam_list
-        n_cam=len(input_camera_list)
-        if (args.rpc == 1) & (args.dem != 'None'):
-            print("will also write rpc files")
-            dem=args.dem
-            img_list=arg.img_list
-            rpc=True
-        else:
-            dem=None
-            img_list=[None] * n_cam
-            rpc=False
-        transform_list=[transform_txt] * n_cam
-        outfolder = args.outfol
-        if not os.path.exists(outfolder):
-            os.makedirs(outfolder)
-        outfolder=[outfolder] * n_cam
-        write=[True] * n_cam
-        rpc=[rpc] * n_cam
-        dem=[dem] * n_cam
-        p_umap(asp.align_cameras,input_camera_list,transform_list,outfolder,write,rpc,dem,img_list,num_cpus = n_cpu_thread)
-
+        workflow.grdding_wrapper(args.point_cloud_list,args.tr,args.tsrs)
+    elif mode == 'classic_dem_align':
+        workflow.alignment_wrapper_single(args.refdem,args.source_dem,args.max_displacement,args.outprefix,
+                             args.align,args.trans_only,initial_align=args.initial_align)
+    elif mode == 'multi_align':
+        workflow.alignment_wrapper_multi(args.refdem,args.source_dem_list,args.max_displacement,args.align,
+                            trans_only=args.trans_only,initial_align=args.initial_align)
+    elif mode == 'align_cameras':
+        workflow.align_cameras_wrapper(args.cam_list,args.transform,args.outfol,rpc=args.rpc,
+                                       dem=args.dem,img_list=args.img_list)
 if __name__=="__main__":
     main()

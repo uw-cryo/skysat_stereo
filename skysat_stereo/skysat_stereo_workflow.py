@@ -9,9 +9,12 @@ from tqdm import tqdm
 from p_tqdm import p_umap, p_map
 from skysat_stereo import skysat
 from skysat_stereo import asp_utils as asp
-from skysat_stereo import misc_geospatial as geo
+from rpcm import geo
+from skysat_stereo import misc_geospatial as misc
 from shapely.geometry import Polygon
 from itertools import combinations,compress
+from osgeo import osr
+from pyproj import Transformer
 
 def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_track=False):
     """
@@ -27,9 +30,9 @@ def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_t
     out_shp = os.path.splitext(out_fn)[0]+'_bound.gpkg'
     n_proc = iolib.cpu_count()
     shp_list = p_umap(skysat.skysat_footprint,img_list,num_cpus=2*n_proc)
-    merged_shape = geo.shp_merger(shp_list)
+    merged_shape = misc.shp_merger(shp_list)
     bbox = merged_shape.total_bounds
-    merged_shape = geo.shp_merger(shp_list)
+    merged_shape = misc.shp_merger(shp_list)
     bbox = merged_shape.total_bounds
     print (f'Bounding box lon_lat is:{bbox}')
     print (f'Bounding box lon_lat is:{bbox}')
@@ -429,16 +432,17 @@ def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
     else:
         trans_only = True
     asp.dem_align(ref_dem,source_dem,max_displacement,outprefix,align,
-                  trans_only,threads=iolib.cpu_count())
+                  trans_only,threads=iolib.cpu_count(),intial_align=initial_align)
     
-def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,
+def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,initial_align=None,
                             trans_only=0):
     outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
-    f trans_only == 0:
+    if trans_only == 0:
         trans_only = False
     else:
         trans_only = True
     n_source = len(source_dem_list)
+    
     initial_align = [initial_align]*n_source
     ref_dem_list=[ref_dem] * n_source
     max_disp_list=[max_displacement] * n_source
