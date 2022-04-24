@@ -1,17 +1,21 @@
 #! /usr/bin/env python
 
 import os,sys,glob
-from pygeotools.lib import iolib
+import numpy as np
+import geopandas as gpd
+import pandas as pd
+from pygeotools.lib import iolib,malib
 from p_tqdm import p_umap, p_map
 from skysat_stereo import skysat
+from skysat_stereo import asp_utils as asp
 from skysat_stereo import misc_geospatial as geo
 from shapely.geometry import Polygon
 from itertools import combinations,compress
 
-def prepare_stereopair_list(img_folder,out_fn,aoi_bbox=None,cross_track=False):
+def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_track=False):
     """
     """ 
-    geo_crs = 'EPGS:4326'
+    geo_crs = 'EPSG:4326'
     # populate img list
     try:
         img_list = sorted(glob.glob(os.path.join(img_folder,'*.tif')))
@@ -79,7 +83,8 @@ def prepare_stereopair_list(img_folder,out_fn,aoi_bbox=None,cross_track=False):
     
     return stereo_only_df, out_df
 
-def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
+def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_level='l1a',
+        sampler=5,overlap_pkl=None,dem=None,outdir=None):
     """
     """
     if not os.path.exists(outdir):
@@ -106,23 +111,24 @@ def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
         sub_sampled_frames = frames[idx]
         sub_df = frame_index[frame_index['name'].isin(list(sub_sampled_frames))]
         sub_df.to_csv(outdf,sep=',',index=False)
+
         #this is camera/gcp initialisation
         n = len(sub_sampled_frames)
         img_list = [glob.glob(os.path.join(img_folder,'{}*.tiff'.format(frame)))[0] for frame in sub_sampled_frames]
         pitch = [1]*n
         out_fn = [os.path.join(outdir,'{}_frame_idx.tsai'.format(frame)) for frame in sub_sampled_frames]
         out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
-        frame_index = [args.frame_index]*n
+        frame_index = [frame_index]*n
        	camera = [None]*n
         gcp_factor = 4
 
     elif mode == 'triplet':
-        df = pd.read_pickle(args.overlap_pkl)
+        df = pd.read_pickle(overlap_pkl)
         img_list = list(np.unique(np.array(list(df.img1.values)+list(df.img2.values))))
         img_list = [os.path.splitext(os.path.basename(img))[0] for img in img_list]
         cam_list = [glob.glob(os.path.join(img_folder,'{}*.tif'.format(img)))[0] for img in img_list]
         n = len(img_list)
-        if args.product_level == 'l1b':
+        if product_level == 'l1b':
             pitch = [0.8]*n
         else:
             pitch = [1.0]*n
@@ -136,7 +142,6 @@ def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
     fl = [553846.153846]*n
     cx = [1280]*n
     cy = [540]*n
-    dem = args.dem
     ht_datum = [malib.get_stats_dict(iolib.fn_getma(dem))['median']]*n # use this value for height where DEM has no-data
     gcp_std = [1]*n
     datum = ['WGS84']*n
@@ -149,10 +154,10 @@ def skysat_preprocess(img_folder,mode,session,outdir,frame_index=None,sampler,):
     # count expexted gcp 
     print(f"Total expected GCP {gcp_factor*n}")    
     asp.clean_gcp(out_gcp,outdir)
-    
+    return cam_gen_log   
 
-def execute_skysat_stereo(img,mode,session,ba_prefix=None,overlap_list_fn,frame_index,dem,texture,
-    sampling_interval,cam_folder,outfol,writeout_only=False,mvs=0,block=1,full_extent=1,
+def execute_skysat_stereo(img,mode,session,overlap_list_fn,frame_index,dem,texture,
+    sampling_interval,cam_folder,outfol,ba_prefix=None,writeout_only=False,mvs=0,block=1,full_extent=1,
     entry_point=0,threads=2,overlap_pkl=None,job_fn=None):
     """
     """

@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 import subprocess
 import argparse
+from datetime import datetime
 import os,sys,glob,shutil
 from rpcm import geo
 import numpy as np
@@ -170,9 +171,16 @@ def main():
 
     if 2 in steps2run:
         print("Generating Frame Cameras")
-        frame_cam_cmd = ['-mode','triplet','-t','rpc','-img',img_folder,'-outdir',cam_gcp_directory,
-                    '-overlap_pkl',overlap_stereo_pkl,'-dem',ortho_dem]
-        asp.run_cmd('skysat_preprocess.py',frame_cam_cmd)
+        cam_gen_log = workflow.skysat_preprocess(img_folder,mode='triplet',
+        product_level='l1b',overlap_pkl=overlap_stereo_pkl,dem=ortho_dem,
+        outdir=cam_gcp_directory)
+
+        now = datetime.now()
+        log_fn = os.path.join(cam_gcp_directory,'camgen_{}.log'.format(now))
+        print("saving subprocess camgen log at {}".format(log_fn))
+        with open(log_fn,'w') as f:
+        for log in cam_gen_log:
+            f.write(log)
 
     if 3 in steps2run:
         # specify whether to run using maprojected sessions or not
