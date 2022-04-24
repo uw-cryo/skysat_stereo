@@ -342,10 +342,10 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     map_opt.extend(['--t_srs',t_srs])
     if ba_prefix:
         map_opt.extend(['--bundle-adjust-prefix',ba_prefix])
-    if extent:
+    if extent is not None:
         xmin,ymin,xmax,ymax = extent.split(' ')
         map_opt.extend(['--t_projwin', xmin,ymin,xmax,ymax])
-    if tr:
+    if tr is not None:
         map_opt.extend(['--tr',tr])
 
     # for SkySat and Doves, limit to integer values, and 0 as no-data
