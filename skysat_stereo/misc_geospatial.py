@@ -8,6 +8,7 @@ import geopandas as gpd
 from imview import pltlib
 import matplotlib.pyplot as plt
 from pygeotools.lib import iolib,geolib,warplib
+from demcoreg import dem_mask
 
 def shp_merger(shplist):
     """
@@ -107,3 +108,29 @@ def ndvtrim_function(src_fn):
     iolib.writeGTiff(bma[edge_env[0]:edge_env[1]+1, edge_env[2]:edge_env[3]+1], out_fn, src_ds, gt=out_gt)
     bma = None
 
+def dem_mask_disk(mask_list,dem_fn):
+    """
+    This is lightweight version ported from here for convinence: https://github.com/dshean/demcoreg/blob/master/demcoreg/dem_mask.py
+    """
+    dem_ds = iolib.fn_getds(dem_fn)
+    print(dem_fn)
+    #Get DEM masked array
+    dem = iolib.ds_getma(dem_ds)
+    print("%i valid pixels in original input tif" % dem.count())
+    newmask = dem_mask.get_mask(dem_ds,mask_list,dem_fn=dem_fn)
+    #Apply mask to original DEM - use these surfaces for co-registration
+    newdem = np.ma.array(dem, mask=newmask)
+    #Check that we have enough pixels, good distribution
+    min_validpx_count = 100
+    min_validpx_std = 10
+    validpx_count = newdem.count()
+    validpx_std = newdem.std()
+    print("%i valid pixels in masked output tif to be used as ref" % validpx_count)
+    print("%0.2f std in masked output tif to be used as ref" % validpx_std)
+    #if (validpx_count > min_validpx_count) and (validpx_std > min_validpx_std):
+    if (validpx_count > min_validpx_count):
+        out_fn = os.path.splitext(dem_fn)[0]+"_ref.tif"
+        iolib.writeGTiff(newdem, out_fn, src_ds=dem_ds)
+    else:
+        print("Not enough valid pixels!")
+    

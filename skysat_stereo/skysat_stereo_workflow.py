@@ -623,4 +623,6 @@ def dense_match_wrapper(stereo_master_dir,ba_dir,modify_overlap=0,img_fol=None,o
             for idx,img1 in enumerate(new_img1):
                 out_str = '{} {}\n'.format(img1,new_img2[idx])
                 f.write(out_str)
+                
+
             
