@@ -8,7 +8,7 @@ import pandas as pd
 import geopandas as gpd
 from imview import pltlib
 import matplotlib.pyplot as plt
-from pygeotools.lib import iolib,geolib,warplib
+from pygeotools.lib import iolib,geolib,warplib,malib
 from demcoreg import dem_mask
 
 def shp_merger(shplist):
