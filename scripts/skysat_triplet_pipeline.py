@@ -135,8 +135,11 @@ def main():
     if not os.path.exists(refdem_dir):
         os.makedirs(refdem_dir)
     shutil.copy2(coreg_dem,os.path.join(refdem_dir,os.path.basename(coreg_dem)))
-    if not coreg_dem == ortho_dem:
+    if coreg_dem != ortho_dem:
+        diff_dem = True
         shutil.copy2(ortho_dem,os.path.join(refdem_dir,os.path.basename(ortho_dem)))
+    else:
+        diff_dem = False
     # replace old variable names
     coreg_dem = os.path.join(refdem_dir,os.path.basename(coreg_dem))
     ortho_dem = os.path.join(refdem_dir,os.path.basename(ortho_dem))
@@ -168,7 +171,7 @@ def main():
     misc.ndvtrim_function(os.path.splitext(coreg_dem)[0]+'_shpclip.tif')
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
 
-    if ortho_dem != coreg_dem:
+    if diff_dem:
         misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
         misc.ndvtrim_function(os.path.splitext(ortho_dem)[0]+'_shpclip.tif')
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
@@ -195,7 +198,7 @@ def main():
         if map:
             # orthorectify all the images first
             print("Orthorectifying images using RPC camera")
-            workflow.execute_skysat_orhtorectification(images=images_list,data='triplet',session=init_ortho_session,
+            workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=init_ortho_session,
                                                        outdir=init_ortho_dir,tsrs=epsg_code,dem=ortho_dem,mode='science',
                                                        overlap_list=overlap_stereo_txt,copy_rpc=1,orthomosaic=0)
             init_stereo_input_img_folder = init_ortho_dir
@@ -232,7 +235,7 @@ def main():
         # this is where final stereo will take place
         # first we orthorectify again, if map = True
         if map:
-            workflow.execute_skysat_orhtorectification(images=images_list,data='triplet',session=final_ortho_session,
+            workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=final_ortho_session,
                                                        outdir=intermediate_ortho_dir,tsrs=epsg_code,dem=ortho_dem,
                                                        ba_prefix=ba_prefix+'-run',mode='science',overlap_list=overlap_stereo_txt,
                                                        copy_rpc=1,orthomosaic=0)
@@ -300,7 +303,7 @@ def main():
         # this produces final georegistered orthomosaics
         georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]
         print("Running final orthomsaic creation")
-        workflow.execute_skysat_orhtorectification(images=images_list,data='triplet',session=final_ortho_session,
+        workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=final_ortho_session,
                                                        outdir=final_ortho_dir,tsrs=epsg_code,dem=georegistered_median_dem,
                                                        ba_prefix=os.path.join(aligned_cam_dir,'run-run'),mode='science',
                                                        overlap_list=None,copy_rpc=0,orthomosaic=1)
