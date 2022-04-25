@@ -2,6 +2,7 @@
 import matplotlib
 matplotlib.use('Agg')
 
+import os,sys,glob
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -68,7 +69,7 @@ def clip_raster_by_shp_disk(r_fn,shp_fn,invert=False):
     if not os.path.exists(shp_fn):
         sys.exit("Unable to find shp_fn: %s" % shp_fn)
      #Do the clipping
-    r, r_ds = geolib.raster_shpclip(r_fn, shp_fn, invert)
+    r, r_ds = geolib.raster_shpclip(r_fn, shp_fn,extent='raster',invert=invert)
     out_fn = os.path.splitext(r_fn)[0]+'_shpclip.tif'
     iolib.writeGTiff(r, out_fn, r_ds)
 
@@ -77,7 +78,6 @@ def ndvtrim_function(src_fn):
     # this is a direct port from https://github.com/dshean/pygeotools/blob/master/pygeotools/trim_ndv.py
     # intended to make it a function
     """
-    src_fn = args.src_fn
     if not iolib.fn_check(src_fn):
         sys.exit("Unable to find src_fn: %s" % src_fn)
     

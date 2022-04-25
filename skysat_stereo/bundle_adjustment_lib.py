@@ -148,7 +148,7 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
             print("No of cameras is {}".format(len(cam_list)))
             
         else:
-            cam_list = [glob.glob(os.path.join(cam,os.path.splitext(os.path.basename(x))[0]+'*.tsai'))[0] for x in img_lis
+            cam_list = [glob.glob(os.path.join(cam,os.path.splitext(os.path.basename(x))[0]+'*.tsai'))[0] for x in img_list]
     if gcp is not None:
         gcp_list = sorted(glob.glob(os.path.join(args.gcp, '*.gcp')))
     if bound:
