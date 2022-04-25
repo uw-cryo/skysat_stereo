@@ -22,6 +22,7 @@ Need to specify input image folder, input refrence DEM folder
 def getparser():
     parser = argparse.ArgumentParser(description='Wrapper script to run full triplet stereo workflow')
     parser.add_argument('-in_img',default=None,type=str,help='path to Folder containing L1B imagery')
+    parser.add_argument('-aoi_bbox',default=None,type=str,help='path to bounding box shapefile if limiting processing to a smaller aoi')
     parser.add_argument('-orthodem',default=None,type=str,help='path to Reference DEM to use in orthorectification and camera resection, if not provided, will use coregdem')
     parser.add_argument('-coregdem',default=None,type=str,help='path to reference DEM to use in coregisteration')
     parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s)')
@@ -146,7 +147,9 @@ def main():
         # Step 1 Compute overlapping pairs
         # Inputs: Image directory, minimum overlap percentage 
         overlap_perc = 0.01 # 1 percent essentially
-        workflow.prepare_stereopair_list(img_folder,overlap_perc,overlap_full_txt)
+        
+        workflow.prepare_stereopair_list(img_folder,overlap_perc,overlap_full_txt,
+                                         aoi_bbox=args.aoi_bbox)
         
 
     print("Computing Target UTM zones for orthorectification")
@@ -194,7 +197,7 @@ def main():
             print("Orthorectifying images using RPC camera")
             workflow.execute_skysat_orhtorectification(images=images_list,data='triplet',session=init_ortho_session,
                                                        outdir=init_ortho_dir,tsrs=epsg_code,dem=ortho_dem,mode='science',
-                                                       overlap_list=None,copy_rpc=1,orthomosaic=0)
+                                                       overlap_list=overlap_stereo_txt,copy_rpc=1,orthomosaic=0)
             init_stereo_input_img_folder = init_ortho_dir
         else:
             init_stereo_input_img_folder = img_folder
@@ -231,7 +234,7 @@ def main():
         if map:
             workflow.execute_skysat_orhtorectification(images=images_list,data='triplet',session=final_ortho_session,
                                                        outdir=intermediate_ortho_dir,tsrs=epsg_code,dem=ortho_dem,
-                                                       ba_prefix=ba_prefix+'-run',mode='science',overlap_list=None,
+                                                       ba_prefix=ba_prefix+'-run',mode='science',overlap_list=overlap_stereo_txt,
                                                        copy_rpc=1,orthomosaic=0)
             print("Running intermediate orthorectification with bundle adjusted pinhole cameras")
             

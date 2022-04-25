@@ -127,13 +127,28 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         #img_list = [os.path.basename(x) for x in img_list]
         if os.path.islink(img_list[0]):
             img_list = [os.readlink(x) for x in img_list] 
+    if overlap_list is not None:
+        # need to remove images and cameras which are not optimised during bundle adjustment
+        # read pairs from input overlap list
+        initial_count = len(img_list)
+        with open(overlap_list) as f:
+            content = f.readlines()
+        content = [x.strip() for x in content]
+        l_img = [x.split(' ')[0] for x in content]
+        r_img = [x.split(' ')[1] for x in content]
+        total_img = l_img + r_img
+        uniq_idx = np.unique(total_img, return_index=True)[1]
+        img_list = [total_img[idx] for idx in sorted(uniq_idx)]
+        print(f"Out of the initial {initial_count} images, {len(img_list)} will be orthorectified using adjusted cameras")
+
     if cam is not None:
-        cam = os.path.abspath(cam)
+        #cam = os.path.abspath(cam)
         if 'run' in os.path.basename(cam):
-            cam_list = sorted(glob.glob(cam+'-*.tsai'))
+            cam_list = [glob.glob(cam+'-'+os.path.splitext(os.path.basename(x))[0]+'*.tsai')[0] for x in img_list]
+            print("No of cameras is {}".format(len(cam_list)))
+            
         else:
-            cam_list = sorted(glob.glob(os.path.join(cam, '*.tsai')))
-        cam_list = cam_list[:len(img_list)] 
+            cam_list = [glob.glob(os.path.join(cam,os.path.splitext(os.path.basename(x))[0]+'*.tsai'))[0] for x in img_lis
     if gcp is not None:
         gcp_list = sorted(glob.glob(os.path.join(args.gcp, '*.gcp')))
     if bound:
