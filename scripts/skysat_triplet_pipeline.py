@@ -9,6 +9,7 @@ import geopandas as gpd
 from distutils.spawn import find_executable
 from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
+from skysat_stereo import bundle_adjustment_lib as ba
 from skysat_stereo import skysat_stereo_workflow as workflow
 
 """
@@ -102,10 +103,10 @@ def main():
 
     # step 7. dem_alignment
     alignment_dir = os.path.join(out_fol,'georegistered_dem_mos')
-			
+ 
     # step 8, camera alignment
     aligned_cam_dir = os.path.join(out_fol,'georegistered_cameras')
-			
+ 
     # step 9, final orthorectification
     final_ortho_dir = os.path.join(out_fol,'georegistered_orthomosaics')
     
@@ -119,7 +120,7 @@ def main():
     else:
         steps2run = np.array(args.partial_workflow_steps).astype(int)
 
-	#workflow_steps
+    #workflow_steps
     # create output directory
     if not os.path.exists(out_fol):
         os.makedirs(out_fol)
@@ -179,8 +180,8 @@ def main():
         log_fn = os.path.join(cam_gcp_directory,'camgen_{}.log'.format(now))
         print("saving subprocess camgen log at {}".format(log_fn))
         with open(log_fn,'w') as f:
-        for log in cam_gen_log:
-            f.write(log)
+            for log in cam_gen_log:
+                f.write(log)
 
     if 3 in steps2run:
         # specify whether to run using maprojected sessions or not
@@ -212,11 +213,13 @@ def main():
     if 4 in steps2run:
         # this is bundle adjustment step
         # we use dense files copied from previous step
+        
         ba_prefix = os.path.join(init_ba,'run')
-        ba_cmd = ['-mode', 'full_triplet', '-t', 'nadirpinhole', '-img', img_folder, 
-                  '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, '-num_iter', '700', '-num_pass', '2','-ba_prefix',ba_prefix]
         print("running bundle adjustment")
-        asp.run_cmd('ba_skysat.py',ba_cmd)
+        ba.bundle_adjust_stable(img=img_folder,ba_prefix=ba_prefix,cam=os.path.abspath(cam_gcp_directory),
+                                session='nadirpinhole',overlap_list=overlap_stereo_txt,
+                                num_iter=700,num_pass=2,mode='full_triplet')
+        
 
 
     if 5 in steps2run:

@@ -115,7 +115,7 @@ def get_ba_opts(ba_prefix, ip_per_tile=4000,camera_weight=None,translation_weigh
 
     return ba_opt
 
-def bundle_adjust_stable(img,cam=None,session='rpc',initial_transform=None,
+def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=None,
                         input_adjustments=None,overlap_list=None,gcp=None,
                         mode='full_triplet',bound=None,camera_param2float='trans+rot',
                         dem=None,num_iter=2000,num_pass=2):
