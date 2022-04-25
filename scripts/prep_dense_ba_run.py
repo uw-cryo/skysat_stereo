@@ -35,7 +35,7 @@ def main():
         img_fol = None
         orig_pickle=None
         dense_match_pickle = None
-        workflow.dense_match_wrapper(stereo_master_dir,ba_dir,modify_overlap=args.modify_overlap,
+    workflow.dense_match_wrapper(stereo_master_dir,ba_dir,modify_overlap=args.modify_overlap,
                                      img_fol=img_fol,orig_pickle=orig_pickle,dense_match_pickle=dense_match_pickle,
                                      out_overlap_fn=args.out_overlap_fn)
     print("Script is complete !")
