@@ -160,7 +160,7 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
     asp.clean_gcp(out_gcp,outdir)
     return cam_gen_log   
 
-def execute_skysat_orhtorectification(images,outdir,dem='WGS84',tr=None,tsrs=None,del_opt=False,cam_folder=None,ba_prefix=None,
+def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',tr=None,tsrs=None,del_opt=False,cam_folder=None,ba_prefix=None,
     mode='science',session=None,overlap_list=None,frame_index_fn=None,copy_rpc=1,orthomosaic=0):
     """
     """

@@ -57,9 +57,12 @@ def main():
     cam_folder = args.cam
     ba_prefix = args.ba_prefix
     mode = args.mode
-    workflow.execute_skysat_orhtorectification(images,outdir,dem=dem,tr=tr,tsrs=tsrs,del_opt=args.delete_temporary_files,cam_folder=cam_folder,
-    ba_prefix=ba_prefix,mode=mode,session=args.session,overlap_list=args.overlap_list,frame_index_fn=args.frame_index,
-    copy_rpc=args.copy_rpc,orthomosaic=args.orthomosaic)
+    workflow.execute_skysat_orhtorectification(images,outdir,data=args.data,dem=dem,
+                                               tr=tr,tsrs=tsrs,del_opt=args.delete_temporary_files,
+                                               cam_folder=cam_folder,ba_prefix=ba_prefix,mode=mode,
+                                               session=args.session,overlap_list=args.overlap_list,
+                                               frame_index_fn=args.frame_index,copy_rpc=args.copy_rpc,
+                                               orthomosaic=args.orthomosaic)
     print("Script is complete!") 
 
 if __name__=='__main__':
