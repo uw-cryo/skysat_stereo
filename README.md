@@ -43,7 +43,7 @@ Figure 3: Sample products from SkySat video collection over Mt. St. Helen's crat
 
 ## Dependencies
 - See [environment.yml file](/environment.yml) for complete list of Python packages with pinned version numbers.
-- [NASA Ames Stereo Pipeline v 2.7.0](https://stereopipeline.readthedocs.io/en/latest/)
+- [NASA Ames Stereo Pipeline v 3.0.1 alpha (April 22 2022)](https://stereopipeline.readthedocs.io/en/latest/)
 
 ## Installation
 Please see the [install instructions](/docs/install_instructions.md).
