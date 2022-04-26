@@ -9,7 +9,7 @@ import pandas as pd
 from osgeo import gdal
 import os,sys,glob
 from shapely import wkt
-#import gdalconst
+from osgeo import gdalconst
 import re
 from tqdm import tqdm
 from datetime import datetime
@@ -485,7 +485,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
     return job_list
 
 def prepare_stereo_jobs_wrapper(img1,img2,img_list,outfolder,t,threads=2,crop_map=False,ba_prefix=None,
-    cam_fol=None,dem=None,block=False,texture='normal',entry_point=0):
+    cam_fol=None,dem=None,block=False,texture='normal',entry_point='pprc'):
     """
     pairwise job preparation wrapper, intended to help in parallelization
     Parameters

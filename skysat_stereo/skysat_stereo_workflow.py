@@ -6,7 +6,7 @@ import geopandas as gpd
 import pandas as pd
 from pygeotools.lib import iolib,malib
 from tqdm import tqdm
-from p_tqdm import p_umap, p_map
+from p_tqdm import p_umap
 from skysat_stereo import skysat
 from skysat_stereo import asp_utils as asp
 from rpcm import geo
@@ -20,6 +20,7 @@ from pyproj import Transformer
 def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_track=False):
     """
     """ 
+    from p_tqdm import p_map
     geo_crs = 'EPSG:4326'
     # populate img list
     try:
@@ -92,6 +93,7 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
         sampler=5,overlap_pkl=None,dem=None,outdir=None):
     """
     """
+    from p_tqdm import p_map
     if not os.path.exists(outdir):
         try:
             os.makedir(outdir)
@@ -164,6 +166,7 @@ def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',t
     mode='science',session=None,overlap_list=None,frame_index_fn=None,copy_rpc=1,orthomosaic=0):
     """
     """
+    from p_tqdm import p_map
     if mode == 'browse':
         """
         this block creates low-res orthomosaics from RPC info for browsing purpose only
@@ -277,7 +280,7 @@ def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',t
                 f.write(log)
         if copy_rpc == 1:
             print("Copying RPC from native image to orthoimage in parallel")
-            copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=cpu_count())
+            copy_rpc_out = p_map(skysat.copy_rpc,img_list,out_list,num_cpus=iolib.cpu_count())
         if orthomosaic == 1:
             print("Will also produce median, weighted average and highest resolution orthomosaic")
             if data == 'triplet':
@@ -334,9 +337,10 @@ def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',t
 
 def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
     sampling_interval=None,cam_folder=None,ba_prefix=None,writeout_only=False,mvs=0,block=1,crop_map=0,
-    full_extent=1,entry_point=0,threads=2,overlap_pkl=None,frame_index=None,job_fn=None,cross_track=False):
+    full_extent=1,entry_point='pprc',threads=2,overlap_pkl=None,frame_index=None,job_fn=None,cross_track=False):
     """
     """
+    from p_tqdm import p_map
     img = os.path.abspath(img)
     try:
         img_list = sorted(glob.glob(os.path.join(img, '*.tif')))
