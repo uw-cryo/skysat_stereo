@@ -391,7 +391,7 @@ def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
         n_cpu = iolib.cpu_count()
         # no of parallel jobs with user specified threads per job
         jobs = int(n_cpu/threads)
-        stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
+        stereo_log = p_map(asp.run_cmd,['parallel_stereo']*len(job_list), job_list, num_cpus=jobs)
         stereo_log_fn = os.path.join(outfol,'stereo_log.log')
         print("Consolidated stereo log saved at {}".format(stereo_log_fn))
     else:
