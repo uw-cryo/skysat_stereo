@@ -218,7 +218,7 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
             round2_opts = get_ba_opts(
                 ba_prefix, overlap_limit, input_adjustments=ba_prefix, flavor='2round_gcp_2', session=session,
                 elevation_limit=[min_elev,max_elev],lon_lat_limit=[lon_min,lat_min,lon_max,lat_max])
-        ba_args = img_list+gcp_list
+            ba_args = img_list+gcp_list
         
         
         print("running round 2 bundle adjustment for given triplet stereo combination")
