@@ -470,7 +470,8 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     # session_args
     stereo_opt.extend(['-t', session])
     stereo_opt.extend(['-e',str(ep)])
-    stereo_opt.extend(['--threads', str(threads)])
+    stereo_opt.extend(['--threads-multiprocess', str(threads)])
+    stereo_opt.extend(['--threads-singleprocess', str(threads)])
     if ba_prefix:
         stereo_opt.extend(['--bundle-adjust-prefix', ba_prefix])
     # stereo is a python wrapper for 3/4 stages
