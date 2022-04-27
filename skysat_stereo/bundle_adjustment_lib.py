@@ -193,12 +193,15 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         run_cmd('bundle_adjust', round1_opts+ba_args)
         
         # Save the first and foremost bundle adjustment reprojection error file
-        init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv'))[0]
+        init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*residuals*pointmap*.csv'))[0]
         init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
-        init_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*initial_residuals_no_loss_function_raw_pixels.txt'))[0]
+        init_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*initial_residuals_raw_pixels.txt'))[0]
         init_per_cam_reproj_err_disk = os.path.splitext(init_per_cam_reproj_err)[0]+'_initial_per_cam_reproj_error.txt'
+        init_cam_stats = sorted(glob.glob(ba_prefix+'-*initial_residuals_stats.txt'))[0]
+        init_cam_stats_disk = os.path.splitext(init_cam_stats)[0]+'_initial_camera_stats.txt'
         shutil.copy2(init_residual_fn_def,init_residual_fn)
         shutil.copy2(init_per_cam_reproj_err,init_per_cam_reproj_err_disk)
+        shutil.copy2(init_cam_stats,init_cam_stats_disk)
         
         if session == 'nadirpinhole':
             identifier = os.path.basename(cam_list[0]).split('_',14)[0][:2]
@@ -222,9 +225,13 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         run_cmd('bundle_adjust', round2_opts+ba_args)
         
         # Save state for final condition reprojection errors for the sparse triangulated points
-        final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*no_loss_*pointmap*.csv'))[0]
+        final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*residuals*pointmap*.csv'))[0]
         final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
         shutil.copy2(final_residual_fn_def,final_residual_fn)
-        final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals_no_loss_function_raw_pixels.txt'))[0]
+        final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals_raw_pixels.txt'))[0]
         final_per_cam_reproj_err_disk = os.path.splitext(final_per_cam_reproj_err)[0]+'_final_per_cam_reproj_error.txt'
+        final_cam_stats = sorted(glob.glob(ba_prefix+'-*final_residuals_stats.txt'))[0]
+        final_cam_stats_disk = os.path.splitext(final_cam_stats)[0]+'_final_camera_stats.txt'
         shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
+        shutil.copy2(final_cam_stats,final_cam_stats_disk)
+
