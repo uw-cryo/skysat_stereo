@@ -43,11 +43,11 @@ def run_cmd(bin, args, **kw):
     
     #print(call)
     #print(' '.join(call))
-    
-    call.extend(args)
+    if args is not None: 
+        call.extend(args)
     #print(call)
     try:
-        out = subprocess.check_output(call,encoding='UTF-8')
+        out = subprocess.run(call,check=True,capture_output=True,encoding='UTF-8').stdout
     except:
         out = "the command {} failed to run, see corresponding asp log".format(call)
     return out

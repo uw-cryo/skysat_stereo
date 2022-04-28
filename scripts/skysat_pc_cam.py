@@ -47,7 +47,7 @@ def main():
     args = parser.parse_args()
     mode = args.mode
     if mode == 'gridding_only':
-        workflow.grdding_wrapper(args.point_cloud_list,args.tr,args.tsrs)
+        workflow.gridding_wrapper(args.point_cloud_list,args.tr,args.tsrs)
     elif mode == 'classic_dem_align':
         workflow.alignment_wrapper_single(args.refdem,args.source_dem,args.max_displacement,args.outprefix,
                              args.align,args.trans_only,initial_align=args.initial_align)

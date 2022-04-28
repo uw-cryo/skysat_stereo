@@ -390,7 +390,10 @@ def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
         print(job_list[0])
         n_cpu = iolib.cpu_count()
         # no of parallel jobs with user specified threads per job
-        jobs = int(n_cpu/threads)
+        #jobs = int(n_cpu/threads)
+        # this seems to break with new paralle_stereo setup
+        # setting hardcoded value of 20 for now
+        jobs = 20
         stereo_log = p_map(asp.run_cmd,['parallel_stereo']*len(job_list), job_list, num_cpus=jobs)
         stereo_log_fn = os.path.join(outfol,'stereo_log.log')
         print("Consolidated stereo log saved at {}".format(stereo_log_fn))
@@ -405,7 +408,7 @@ def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
                     continue
 
                     
-def grdding_wrapper(pc_list,tr,tsrs=None):
+def gridding_wrapper(pc_list,tr,tsrs=None):
     if tsrs is None:
         print("Projected Target CRS not provided, reading from the first point cloud")
         
