@@ -4,7 +4,7 @@ from pygeotools.lib import iolib,geolib,malib
 import os,sys,glob,shutil,psutil
 import pandas as pd
 import geopandas as gpd
-from pyproj import Proj, transform
+from pyproj import Proj, transform, Transformer
 from rpcm import rpc_from_geotiff
 from distutils.spawn import find_executable
 import subprocess
@@ -40,14 +40,18 @@ def run_cmd(bin, args, **kw):
     #binpath = os.path.join('/opt/StereoPipeline/bin/',bin)
     call = [binpath,]
     #print(call)
-    call.extend(args)
+    
     #print(call)
     #print(' '.join(call))
+    if args is not None: 
+        call.extend(args)
+    #print(call)
     try:
-        out = subprocess.check_output(call,encoding='UTF-8')
+        out = subprocess.run(call,check=True,capture_output=True,encoding='UTF-8').stdout
     except:
         out = "the command {} failed to run, see corresponding asp log".format(call)
     return out
+
 
 def read_tsai_dict(tsai):
     """
@@ -76,7 +80,12 @@ def read_tsai_dict(tsai):
     rot = content[10].split(' = ',10)[1].split(' ')
     rot_mat = [np.float(x) for x in rot] # rotation matrix for camera to world coordinates transformation
     pitch = np.float(content[11].split(' = ',10)[1]) # pixel pitch
-    cam_cen_lat_lon = geolib.ecef2ll(cam_cen[0],cam_cen[1],cam_cen[2]) # camera center coordinates in geographic coordinates
+    
+    ecef_proj = 'EPSG:4978'
+    geo_proj = 'EPSG:4326'
+    ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
+    cam_cen_lat_lon = ecef2wgs.transform(cam_cen[0],cam_cen[1],cam_cen[2]) # this returns lat, lon and height
+    # cam_cen_lat_lon = geolib.ecef2ll(cam_cen[0],cam_cen[1],cam_cen[2]) # camera center coordinates in geographic coordinates
     tsai_dict = {'camera':camera,'focal_length':(fu,fv),'optical_center':(cu,cv),'cam_cen_ecef':cam_cen,'cam_cen_wgs':cam_cen_lat_lon,'rotation_matrix':rot_mat,'pitch':pitch}
     return tsai_dict
 
@@ -164,7 +173,7 @@ def cam_gen(img,fl=553846.153846,cx=1280,cy=540,pitch=1,ht_datum=None,gcp_std=1,
             cam_gen_opt.extend(['--parse-ecef'])
         cam_gen_opt.extend(['--refine-camera'])
         cam_gen_args = [img]
-        print(cam_gen_opt+cam_gen_args)
+        #print(cam_gen_opt+cam_gen_args)
         out = run_cmd('cam_gen',cam_gen_args+cam_gen_opt,msg='Running camgen command for image {}'.format(os.path.basename(img)))
         return out
 
@@ -220,7 +229,6 @@ def rpc2map (img,imgx,imgy,imgz=0):
     rpc = rpc_from_geotiff(img)
     mx,my = rpc.localization(imgx,imgy,imgz)
     return mx,my
-
 
 def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=None, initial_transform=None, input_adjustments=None, flavor='general_ba', session='nadirpinhole', gcp_transform=False,num_iterations=2000,lon_lat_lim=None,elevation_limit=None):
     """
@@ -300,7 +308,7 @@ def get_ba_opts(ba_prefix, camera_weight=0, overlap_list=None, overlap_limit=Non
         ba_opt.extend(['--elevation-limit',str(elevation_limit[0]),str(elevation_limit[1])])
     return ba_opt
 
-def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam=None,ba_prefix=None):
+def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam=None,ba_prefix=None,extent=None):
     """
     orthorectify input image over a given DEM using ASP's mapproject program.
     See mapproject documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/mapproject.html
@@ -322,6 +330,8 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
         if pinhole session, this will be the path to pinhole camera model
     ba_prefix: str
         Bundle adjustment output for RPC camera.
+    extent: str
+        Projection extent within which to limit mapprojection
     Returns
     ----------
     out: str
@@ -332,12 +342,24 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     map_opt.extend(['--t_srs',t_srs])
     if ba_prefix:
         map_opt.extend(['--bundle-adjust-prefix',ba_prefix])
-    if tr:
+    if extent is not None:
+        xmin,ymin,xmax,ymax = extent.split(' ')
+        map_opt.extend(['--t_projwin', xmin,ymin,xmax,ymax])
+    if tr is not None:
         map_opt.extend(['--tr',tr])
+
+    # for SkySat and Doves, limit to integer values, and 0 as no-data
+    map_opt.extend(['--nodata-value',str(0)])
+    map_opt.extend(['--ot','UInt16'])
+
     if cam:
         map_args = [dem,img,cam,outfn]
+        if '.xml' in cam:
+            print("Input is DG, will use all threads")
+            map_opt.extend(['--threads',str(iolib.cpu_count())])
     else:
         map_args = [dem,img,outfn]
+    
     out = run_cmd('mapproject',map_opt+map_args)
     return out
 
@@ -400,7 +422,7 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         out = run_cmd('dem_mosaic',dem_mosaic_args+dem_mosaic_opt)
     return out
 
-def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode=0,spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
+def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepipolar',xcorr=2,std_mask=0.5,std_kernel=-1,lv=5,corr_kernel=[21,21],rfne_kernel=[35,35],stereo_mode='asp_bm',spm=1,cost_mode=2,corr_tile_size=1024,mvs=False):
     """
     prepares stereo cmd for ASP
     See ASP's stereo documentation here: https://stereopipeline.readthedocs.io/en/latest/correlation.html
@@ -428,8 +450,8 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
         tempelate window size for stereo correlation (default is [21,21])
     rfne_kernel: list
         tempelate window size for sub-pixel optimization (default is [35,35])
-    stereo_mode: int
-        0 for block matching, 1 for SGM, 2 for MGM (default is 0)
+    stereo_mode: str
+        asp_bm for block matching, asp_sgm for SGM, asp_mgm for MGM (default is asp_bm)
     spm: int
         subpixel mode, 0 for parabolic localisation, 1 for adaptavie affine and 2 for simple affine (default is 1)
     cost_mode: int
@@ -448,7 +470,8 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     # session_args
     stereo_opt.extend(['-t', session])
     stereo_opt.extend(['-e',str(ep)])
-    stereo_opt.extend(['--threads', str(threads)])
+    stereo_opt.extend(['--threads-multiprocess', str(threads)])
+    stereo_opt.extend(['--threads-singleprocess', str(threads)])
     if ba_prefix:
         stereo_opt.extend(['--bundle-adjust-prefix', ba_prefix])
     # stereo is a python wrapper for 3/4 stages
@@ -468,7 +491,7 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     # stereo_corr_args:
     # parallel stereo is generally not required with input SkySat imagery
     # So all the mgm/sgm calls are done without it.
-    stereo_opt.extend(['--stereo-algorithm', str(stereo_mode)])
+    stereo_opt.extend(['--stereo-algorithm', stereo_mode])
     # the kernel size would depend on the algorithm
     stereo_opt.extend(['--corr-kernel', str(corr_kernel[0]), str(corr_kernel[1])])
     stereo_opt.extend(['--corr-tile-size', str(corr_tile_size)])
@@ -484,7 +507,7 @@ def get_stereo_opts(session='rpc',ep=0,threads=4,ba_prefix=None,align='Affineepi
     - median-filter-size, --texture-smooth-size (I guess these are set to some defualts for sgm/mgm ?)
     """
     # stereo_tri_args:
-    disp_trip = 2500
+    disp_trip = 10000
     if not mvs:
         stereo_opt.extend(['--num-matches-from-disp-triplets', str(disp_trip)])
         stereo_opt.extend(['--unalign-disparity'])
@@ -509,7 +532,7 @@ def convergence_angle(az1, el1, az2, el2):
     conv_ang = np.rad2deg(np.arccos(np.sin(np.deg2rad(el1)) * np.sin(np.deg2rad(el2)) + np.cos(np.deg2rad(el1)) * np.cos(np.deg2rad(el2)) * np.cos(np.deg2rad(az1 - az2))))
     return conv_ang
 
-def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, threads=n_cpu,trans_only=False):
+def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', source=True, threads=n_cpu,trans_only=False,initial_align=None):
     """
     prepares ASP pc_align ICP cmd
     See pc_align documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -545,6 +568,8 @@ def get_pc_align_opts(outprefix, max_displacement=100, align='point-to-plane', s
         pc_align_opts.extend(['--save-inv-transformed-reference-points'])
     if trans_only:
         pc_align_opts.extend(['--compute-translation-only'])
+    if initial_align:
+        pc_align_opts.extend(['--initial-transform',initial_align])
     pc_align_opts.extend(['-o', outprefix])
     return pc_align_opts
 
@@ -571,6 +596,7 @@ def get_point2dem_opts(tr, tsrs,threads=n_cpu):
     point2dem_opts.extend(['--t_srs', tsrs])
     point2dem_opts.extend(['--threads',str(threads)])
     point2dem_opts.extend(['--errorimage'])
+    point2dem_opts.extend(['--nodata-value',str(-9999.0)])
     return point2dem_opts
 
 def get_total_shift(pc_align_log):
@@ -593,7 +619,7 @@ def get_total_shift(pc_align_log):
     total_shift = np.float(max_alignment_string[0].split(':',15)[-1].split('m')[0])
     return total_shift
 
-def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False, threads=n_cpu):
+def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_only=False, threads=n_cpu,initial_align=None):
     """
     This function implements the full DEM alignment workflow using ASP's pc_align and point2dem programs
     See relevent doumentation here:  https://stereopipeline.readthedocs.io/en/latest/tools/pc_align.html
@@ -636,7 +662,7 @@ def dem_align(ref_dem, source_dem, max_displacement, outprefix, align, trans_onl
         pc_align_vec = '-inverse-transform.txt'
     print("Aligning clouds via the {} method".format(align))
 
-    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only,threads=threads)
+    pc_align_opts = get_pc_align_opts(outprefix,max_displacement,align=align,source=source,trans_only=trans_only,initial_align=initial_align,threads=threads)
     pc_align_log = run_cmd('pc_align', pc_align_opts + pc_align_args)
     print(pc_align_log)
     # this try, except block checks for 2 things.
@@ -825,6 +851,44 @@ def compute_cam_px_reproj_err_stats(content_line,idx):
     stats = malib.get_stats_dict(np.sqrt(px**2+py**2),full=True)
     return stats
 
+def compute_cam_px_reproj_err_stats_alt(content_fn,idx):
+    """
+    Compute discriptive pixel reprojection error stats for all points in a given camera and return as dict
+    Parameters
+    -----------
+    content_line: list
+        list of str, each string containing 1 line contents of run-final_residuals_no_loss_function_raw_pixels.txt
+    idx: np.array
+        point indices for which reprojection error needs to be read
+    Returns
+    -----------
+    stats: dictionary
+        cumulative descriptive stats for all pixels viewed from a given camera
+    """
+    with open(content_fn,'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    try:
+        
+        px,py = read_px_error(content,idx)
+        stats = malib.get_stats_dict(np.sqrt(px**2+py**2),full=True)
+    except ValueError:
+        stats = {'count': 0,
+        'min': 0.0,
+        'max': 0.0,
+        'ptp': 0.0,
+        'mean': 0.0,
+        'std': 0.0,
+        'nmad': 0.0,
+        'med': 0.0,
+        'median': 0.0,
+        'p16': 0.0,
+        'p84': 0.0,
+        'spread': 0.0,
+        'mode': 0.0}   
+        pass 
+    return stats
+
 def camera_reprojection_error_stats_df(pixel_error_fn):
     """
     Return dataframe of descriptive stats for pixel reprojection errors corresponding to each camera
@@ -874,4 +938,408 @@ def camera_reprojection_error_stats_df(pixel_error_fn):
     # dataframe is good to go
     return stats_df
 
+def produce_m(lon,lat,m_meridian_offset=0):
+    """
+    Produce M matrix which facilitates conversion from Lon-lat (NED) to ECEF coordinates
+    From https://github.com/visionworkbench/visionworkbench/blob/master/src/vw/Cartography/Datum.cc#L249
+    This is known as direction cosie matrix
+    
+    Parameters
+    ------------
+    lon: numeric
+        longitude of spacecraft
+    lat: numeric
+        latitude of spacecraft
+    m_meridian_offset: numeric
+        set to zero
+    Returns
+    -----------
+    R: np.array
+        3 x 3 rotation matrix representing the m-matrix aka direction cosine matrix
+    """
+    if lat < -90:
+        lat = -90
+    if lat > 90:
+        lat = 90
+    
+    rlon = (lon + m_meridian_offset) * (np.pi/180)
+    rlat = lat * (np.pi/180)
+    slat = np.sin(rlat)
+    clat = np.cos(rlat)
+    slon = np.sin(rlon)
+    clon = np.cos(rlon)
+    
+    R = np.ones((3,3),dtype=float)
+    R[0,0] = -slat*clon
+    R[1,0] = -slat*slon
+    R[2,0] = clat
+    R[0,1] = -slon
+    R[1,1] = clon
+    R[2,1] = 0.0
+    R[0,2] = -clon*clat
+    R[1,2] = -slon*clat
+    R[2,2] = -slat
+    return R
 
+def convert_ecef2NED(asp_rotation,lon,lat):
+    """
+    convert rotation matrices from ECEF to North-East-Down convention
+    Parameters
+    -------------
+    asp_rotation: np.array
+        3 x 3 rotation matrix from ASP
+    lon: numeric
+        longitude for computing m matrix
+    lat: numeric
+        latitude for computing m matrix
+    
+    Returns
+    --------------
+    r_ned: np.array
+        3 x 3 NED rotation matrix 
+    """
+    m = produce_m(lon,lat)
+    r_ned = np.matmul(np.linalg.inv(m),asp_rotation)
+    #r_ned = np.matmul(np.transpose(m),asp_rotation)
+    #r_ned = np.matmul(m,asp_rotation)
+    return r_ned
+
+def ned_rotation_from_tsai(tsai_fn):
+    """
+    return yaw pitch and roll angles from a ASP tsai file
+    This is experimental and only tested for one SkySat dataset, will remove this message when get consistent results for other datasets
+    
+    Parameters
+    ------------
+    tsai_fn: str
+        path to tsai file
+    
+    Returns
+    ------------
+    yaw,pitch,roll: numeric
+        yaw pitch and roll angle in degrees (order of rotation assumed: Yaw, Pitch, Roll)
+    """
+    from scipy.spatial.transform import Rotation as R
+  
+    #coordinate conversion step
+    from pyproj import Transformer
+    ecef_proj = 'EPSG:4978'
+    geo_proj = 'EPSG:4326'
+    ecef2wgs = Transformer.from_crs(ecef_proj,geo_proj)
+    
+    # read tsai files
+    asp_dict = asp.read_tsai_dict(tsai_fn)
+    
+    # get camera position
+    cam_cen = asp_dict['cam_cen_ecef']
+    lat,lon,h = ecef2wgs.transform(*cam_cen)
+    #print(lat,lon)
+    # get camera rotation angle
+    rot_mat = np.reshape(asp_dict['rotation_matrix'],(3,3))
+    
+    #rotate about z axis by 90 degrees
+    #https://math.stackexchange.com/questions/651413/given-the-degrees-to-rotate-around-axis-how-do-you-come-up-with-rotation-matrix
+    rot_z = np.zeros((3,3),float)
+    angle = np.pi/2
+    rot_z[0,0] = np.cos(angle) 
+    rot_z[0,1] = -1 * np.sin(angle)
+    rot_z[1,0] = np.sin(angle)
+    rot_z[1,1] = np.cos(angle)
+    rot_z[2,2] = 1
+    
+    
+    
+    #return np.matmul(rot_z,convert_ecef2NED(rot_mat,lon,lat))
+    return R.from_matrix(np.matmul(rot_z,np.linalg.inv(convert_ecef2NED(rot_mat,lon,lat)))).as_euler('ZYX',degrees=True)
+
+
+def prepare_virtual_gcp(init_reproj_fn,cnet_fn,refdem,out_gcp,dem_crs='EPSG:32644',dh_threshold = 0.75,mask_glac=True):
+    """
+    *** This is experimental and not tested apart from the Chamoli multi-sensor, multi-orbit dataset***
+    Prepare virtual GCP network from initially triangulated pointcloud
+    Parameters
+    ------------
+    init_reproj_fn: str
+        path to initial reprojection error file
+    cnet_fn: str
+        path to initially triangulated control network
+    refdem: str
+        path to refdem
+    out_gcp: str
+        Path to output GCP file
+    dem_crs: str
+        CRS for input DEM 
+        ## This should not be required, we should get rid of this
+    dh_threshold: numeric
+        absolute dh threshold between triangulated points and refrence DEM height to select as virtual GCP
+    mask_glac: bool
+        mask out points within a glacier (**Not implemented rn**)
+    
+        
+    """
+    print("Initiating logic to compute virtual GCP file")
+    
+    print("Step 1: Reading inital reprojection error file......")
+    init_gdf = _pointmap2gdf(init_reproj_fn,proj=dem_crs)
+    
+    print("Step 2: Reading reference DEM........")
+    dem_ds = iolib.fn_getds(refdem)
+    
+    print("Step 3: Sampling heights from reference DEM and computing elevation residual")
+    map_x = init_gdf.geometry.x.values
+    map_y = init_gdf.geometry.y.values
+    init_gdf['dem_height'] = _sample_ndimage(iolib.ds_getma(dem_ds),dem_ds.GetGeoTransform(),map_x,map_y)
+    init_gdf['dh'] = np.abs(init_gdf['dem_height'] - init_gdf['height_above_datum'])
+    
+    print(f"Step 4: Applying absolute input dh threshold of {np.round(dh_threshold,2)} m..............")
+    mask = init_gdf['dh'] <= dh_threshold
+    fltr_gdf = init_gdf[mask]
+    print(f"From total of {len(init_gdf)} points, {len(fltr_gdf)} points fall within dh_threshold ")
+    
+    print("Step 5: Preparing GCPs indices")
+    filtered_idx = fltr_gdf.index.values
+    mask_5_view = fltr_gdf[' num_observations'] >= 5
+    five_view_idx = fltr_gdf[mask_5_view].index.values
+
+    mask_4_view = fltr_gdf[' num_observations'] == 4
+    four_view_idx = fltr_gdf[mask_4_view].index.values
+
+    mask_3_view = fltr_gdf[' num_observations'] == 3
+    three_view_idx = fltr_gdf[mask_3_view].index.values
+
+    mask_2_view = fltr_gdf[' num_observations'] == 2
+    two_view_idx = fltr_gdf[mask_2_view].index.values
+    
+    print("Step 6: Reading control network")
+    with open(cnet_fn,'r') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    
+    print("Step 7: Writing GCP to disk")
+    #outfn = os.path.splitext(cnet_fn)[0]+'_opt3_gcp.gcp'
+    counter = 1
+
+    view_count = []
+    with open (out_gcp,'w') as f:
+        for idx,line in enumerate(tqdm(content)):
+            if idx not in filtered_idx:
+                continue
+            else:
+
+                num_img = line.count('.tif')
+
+                view_count.append(num_img)
+
+                new_str = f"{counter} {line.split(' ',1)[1]}"
+                if idx in five_view_idx:
+                    #print(new_str)
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 0.5 0.5 0.5 '+new_str.split(' 1 1 1 ')[1]
+
+
+                elif idx in four_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 1.2 1.2 1.2 '+new_str.split(' 1 1 1 ')[1]
+                elif idx in three_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 1.8 1.8 1.8 '+new_str.split(' 1 1 1 ')[1]
+
+                elif idx in two_view_idx:
+                    new_str = new_str.split(' 1 1 1 ')[0] + ' 2.2 2.2 2.2 '+new_str.split(' 1 1 1 ')[1]
+
+
+
+                #final_gcp_list.append(new_str)
+                counter = counter + 1
+                f.write(new_str+'\n')
+    # save a copy of initial parameters incase needed later
+    out_reproj_fn = os.path.splitext(init_reproj_fn)[0]+'_gcp_material.csv'
+    out_cnet_fn = os.path.splitext(cnet_fn)[0]+'_gcp_material.csv'
+    shutil.copy2(init_reproj_fn,out_reproj_fn)
+    shutil.copy2(cnet_fn,out_cnet_fn)
+
+# Helper functions for virtual GCP function
+
+def _df2gdf(df,proj="EPSG:32644",sort_ascending=False):
+    #import geopandas as gpd
+    df = df.rename(columns={'# lon':'lon',' lat':'lat',' height_above_datum':'height_above_datum',' mean_residual':'mean_residual'})
+    gdf = gpd.GeoDataFrame(df,
+                           geometry=gpd.points_from_xy(df.lon, df.lat),
+                           crs='EPSG:4326')
+    gdf = gdf.to_crs(proj)
+    if sort_ascending:
+        gdf = gdf.sort_values('mean_residual',ascending=True)
+    return gdf
+
+def _pointmap2gdf(pointmap,proj='EPSG:32644',sort_ascending=False):
+    df = pd.read_csv(pointmap,skiprows=[1])
+    return _df2gdf(df,proj,sort_ascending)
+
+def _mapToPixel(mX, mY, geoTransform):
+    """Convert map coordinates to pixel coordinates based on geotransform
+    
+    Accepts float or NumPy arrays
+    GDAL model used here - upper left corner of upper left pixel for mX, mY (and in GeoTransform)
+    """
+    mX = np.asarray(mX)
+    mY = np.asarray(mY)
+    if geoTransform[2] + geoTransform[4] == 0:
+        pX = ((mX - geoTransform[0]) / geoTransform[1]) - 0.5
+        pY = ((mY - geoTransform[3]) / geoTransform[5]) - 0.5
+    else:
+        pX, pY = applyGeoTransform(mX, mY, invertGeoTransform(geoTransform))
+    #return int(pX), int(pY)
+    return pX, pY
+
+def _sample_ndimage(dem_ma,dem_gt,map_x,map_y,r='bilinear'):
+    """
+    sample values from the dem masked array for the points in map_x, map_y coordinates
+    dem_ma: Masked numpy array, prefer the dem to be conitnous though
+    gt: geotransform of dem/input array
+    map_x: x_coordinate array
+    map_y: y_coordinate array
+    r: resampling algorithm for decimal px location
+    out: array containing sampled values at zip(map_y,map_x)
+    """
+    import scipy.ndimage
+    #convert map points to px points using geotransform information
+    img_x,img_y = _mapToPixel(map_x,map_y,dem_gt)
+    #prepare input for sampling function
+    yx = np.array([img_y,img_x])
+    # sample the array
+    sampled_pts = scipy.ndimage.map_coordinates(dem_ma, yx, order=1,mode='nearest')
+    return sampled_pts
+
+
+def ipfind_ipmatch(img1,img2,subpixel=False,clear_matchfile=True):
+    """
+    Find match points between two images using SIFT operator in ASP
+    Parameters
+    -------------
+    img1: str
+        path to first image
+    img2: str
+        path to second image
+    subpixel: bool
+        if True, coordinates with subpixel precision are returned
+    clear_matchfile: bool
+        if True, will wipe out the ASP produced matchfile from disk
+    Returns
+    --------------
+    match_img1: np.array
+        array containing matchpoints coordinates in img1 as (x,y) tuples
+    match_img2: np.array
+        array containing matchpoints coordinates in img2 as (x,y) tuples
+    """
+    base1 = os.path.splitext(img1)[0]
+    base2 = os.path.splitext(img2)[0]
+    #asp.run_cmd('ipfind', ['--normalize','--ip-per-tile','2000',img1])
+    #asp.run_cmd('ipfind', ['--normalize','--ip-per-tile','2000',img2])
+    asp.run_cmd('ipfind', ['--normalize',img1])
+    asp.run_cmd('ipfind', ['--normalize',img2])
+    ip1 = base1+'.vwip'
+    ip2 = base2+'.vwip'
+    asp.run_cmd('ipmatch',[img1,ip1,img2,ip2])
+    match_fn = base1+'__'+os.path.basename(base2)+'.match'
+    match_img1,match_img2 = read_match_file(match_fn)
+    match_img1 = pd.DataFrame(match_img1)
+    match_img2 = pd.DataFrame(match_img2)
+    os.remove(ip1)
+    os.remove(ip2)
+    if subpixel:
+        match_img1 = np.array(list(zip(match_img1[0].values,match_img1[1].values)))
+        match_img2 = np.array(list(zip(match_img2[0].values,match_img2[1].values)))
+    else:
+        match_img1 = np.array(list(zip(match_img1[2].values,match_img1[3].values)))
+        match_img2 = np.array(list(zip(match_img2[2].values,match_img2[3].values)))
+    if clear_matchfile:
+        os.remove(match_fn)
+    return match_img1,match_img2
+
+
+def read_ip_record(mf):
+    """
+    Read one IP record from the binary match file.
+    #### Reading ip and MP is borrowed from the solution which Amaury Dehecq shared on the ASP mailing list
+    #### All credits to Amaury (amaury.dehecq at univ-grenoble-alpes.fr)
+
+    Information comtained are x, y, xi, yi, orientation, scale, interest, polarity, octave, scale_lvl, desc 
+    (Oleg/Scott to explain?)
+    Input: - mf, file handle to the in put binary file (in 'rb' mode)
+    Output: - iprec, array containing the IP record
+    """
+    x, y = np.frombuffer(mf.read(8), dtype=np.float32)
+    xi, yi = np.frombuffer(mf.read(8), dtype=np.int32)
+    orientation, scale, interest = np.frombuffer(mf.read(12), dtype=np.float32)
+    polarity, = np.frombuffer(mf.read(1), dtype=np.int8)  # or np.bool?
+    octave, scale_lvl = np.frombuffer(mf.read(8), dtype=np.uint32)
+    ndesc, = np.frombuffer(mf.read(8), dtype=np.uint64)
+    desc = np.frombuffer(mf.read(int(ndesc * 4)), dtype=np.float32)
+    iprec = [x, y, xi, yi, orientation, scale, interest, polarity, octave, scale_lvl, ndesc]
+    iprec.extend(desc)
+    return iprec
+
+def read_match_file(match_file):
+    """
+    Read a full binary match file. First two 8-bits contain the number of IPs in each image. Then contains the record for each IP, image1 first, then image2.
+    #### Reading ip and MP is borrowed from the solution which Amaury Dehecq shared on the ASP mailing list
+    #### All credits to Amaury (amaury.dehecq at univ-grenoble-alpes.fr)
+
+    Input: 
+    - match_file: str, path to the match file
+    Outputs:
+    - two arrays, containing the IP records for image1 and image2.
+    """
+
+    # Open binary file in read mode
+    mf = open(match_file,'rb')
+
+    # Read record length
+    size1 = np.frombuffer(mf.read(8), dtype=np.uint64)[0]
+    size2 = np.frombuffer(mf.read(8), dtype=np.uint64)[0]
+
+    # Read record for each image
+    im1_ip = [read_ip_record(mf) for i in range(size1)]
+    im2_ip = [read_ip_record(mf) for i in range(size2)]
+
+    # Close file
+    mf.close()
+    
+    return im1_ip, im2_ip
+
+
+def virtual_gcp_ba(img_list,cam_list,overlap_list,session,ba_prefix,
+                   refdem,out_gcp,dem_crs='EPSG:32644',dh_threshold = 0.75,mask_glac=True,
+                  prepare_matchfiles=False):
+    # step 1: prepare matchfiles
+    ## Assume for now exists in a directory
+    
+    # step 2: run bundle adjust with zero iterations and only 1 pass
+    ## this will produce the pointmap file and the cnet.csv file #init_reproj_fn,#cnet_fn
+    cnet_ba_opt =  get_ba_opts(
+            ba_prefix, session=session,num_iterations=0,num_pass=1,overlap_list=overlap_list,camera_weight=0)
+    ba_args = img_list + cam_list
+    print("Building control network and pointmap files for virtual GCP creation")
+    run_cmd('bundle_adjust', cnet_ba_opt + ba_args)
+    try:
+        cnet_fn = glob.glob(ba_prefix+'*cnet.csv')[0]
+    except:
+        print("No control network found, exiting")
+        sys.exit()
+    
+    try:
+        init_reproj_fn = glob.glob(ba_prefix+'*initial*no_loss_*pointmap*.csv')[0]
+    except:
+        print("No initial error pointmap found,exiting")
+        sys.exit()
+    
+
+    # step 3: Run the function from above which will generate the gcp
+    
+    prepare_virtual_gcp(init_reproj_fn,cnet_fn,refdem,out_gcp,dem_crs,dh_threshold,mask_glac)
+    
+    # Finally run the bundle adjustment with the GCPs
+    gcp_bundle_adjust_opt = get_ba_opts(
+            ba_prefix, session=session,num_iterations=400,num_pass=1,overlap_list=overlap_list,camera_weight=0)
+    print("Running final bundle adjustment using virtual GCPs")
+    ba_args = img_list + cam_list + [outgcp]
+    run_cmd('bundle_adjust',gcp_bundle_adjust_opt + ba_args)
+
+    print("Tada, you are done !!")

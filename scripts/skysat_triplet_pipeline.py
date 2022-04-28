@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 import subprocess
 import argparse
+from datetime import datetime
 import os,sys,glob,shutil
 from rpcm import geo
 import numpy as np
@@ -8,7 +9,8 @@ import geopandas as gpd
 from distutils.spawn import find_executable
 from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
-
+from skysat_stereo import bundle_adjustment_lib as ba
+from skysat_stereo import skysat_stereo_workflow as workflow
 
 """
 Script for running the full pipeline based on workflow described in ISPRS 2020 submission
@@ -20,9 +22,13 @@ Need to specify input image folder, input refrence DEM folder
 def getparser():
     parser = argparse.ArgumentParser(description='Wrapper script to run full triplet stereo workflow')
     parser.add_argument('-in_img',default=None,type=str,help='path to Folder containing L1B imagery')
+    parser.add_argument('-aoi_bbox',default=None,type=str,help='path to bounding box shapefile if limiting processing to a smaller aoi')
     parser.add_argument('-orthodem',default=None,type=str,help='path to Reference DEM to use in orthorectification and camera resection, if not provided, will use coregdem')
     parser.add_argument('-coregdem',default=None,type=str,help='path to reference DEM to use in coregisteration')
     parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s)')
+    mask_opt = ['glaciers','glaciers+nlcd']
+    parser.add_argument('-mask_dem_opt',default='glaciers',choices=mask_opt,help='surfaces to mask if -mask_dem=1, default is glaciers which uses RGI polygons.\
+                        If processing in CONUS, the option of glaciers+nlcd also additionaly masks out forest surfaces')
     parser.add_argument('-ortho_workflow',default=1,type=int,choices=[1,0],help='option to orthorectify before stereo or not')
     parser.add_argument('-block_matching',default=0,type=int,choices=[1,0],help='whether to use block matching in final stereo matching, default is 0 (not)')
     parser.add_argument('-job_name',default=None,type=str,help='identifier for output folder and final composite products')
@@ -101,10 +107,10 @@ def main():
 
     # step 7. dem_alignment
     alignment_dir = os.path.join(out_fol,'georegistered_dem_mos')
-			
+ 
     # step 8, camera alignment
     aligned_cam_dir = os.path.join(out_fol,'georegistered_cameras')
-			
+ 
     # step 9, final orthorectification
     final_ortho_dir = os.path.join(out_fol,'georegistered_orthomosaics')
     
@@ -118,7 +124,7 @@ def main():
     else:
         steps2run = np.array(args.partial_workflow_steps).astype(int)
 
-	#workflow_steps
+    #workflow_steps
     # create output directory
     if not os.path.exists(out_fol):
         os.makedirs(out_fol)
@@ -129,8 +135,11 @@ def main():
     if not os.path.exists(refdem_dir):
         os.makedirs(refdem_dir)
     shutil.copy2(coreg_dem,os.path.join(refdem_dir,os.path.basename(coreg_dem)))
-    if not coreg_dem == ortho_dem:
+    if coreg_dem != ortho_dem:
+        diff_dem = True
         shutil.copy2(ortho_dem,os.path.join(refdem_dir,os.path.basename(ortho_dem)))
+    else:
+        diff_dem = False
     # replace old variable names
     coreg_dem = os.path.join(refdem_dir,os.path.basename(coreg_dem))
     ortho_dem = os.path.join(refdem_dir,os.path.basename(ortho_dem))
@@ -141,8 +150,10 @@ def main():
         # Step 1 Compute overlapping pairs
         # Inputs: Image directory, minimum overlap percentage 
         overlap_perc = 0.01 # 1 percent essentially
-        cmd = ['-img_folder',img_folder,'-percentage',str(overlap_perc),'-outfn',overlap_full_txt]
-        asp.run_cmd('skysat_overlap.py',cmd)
+        
+        workflow.prepare_stereopair_list(img_folder,overlap_perc,overlap_full_txt,
+                                         aoi_bbox=args.aoi_bbox)
+        
 
     print("Computing Target UTM zones for orthorectification")
     gdf = gpd.read_file(bound_fn)
@@ -156,13 +167,13 @@ def main():
         gdf_proj.to_file(bound_buffer_fn,driver='GPKG')
 
     print("Cropping reference DEMs to extent of SkySat footprint + 1 km buffer")
-    asp.run_cmd('clip_raster_by_shp.py',[coreg_dem,bound_buffer_fn])
-    asp.run_cmd('trim_ndv.py',[os.path.splitext(coreg_dem)[0]+'_shpclip.tif'])
+    misc.clip_raster_by_shp_disk(coreg_dem,bound_buffer_fn)
+    misc.ndvtrim_function(os.path.splitext(coreg_dem)[0]+'_shpclip.tif')
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
-    if ortho_dem != coreg_dem:
-        clip_log = asp.run_cmd('clip_raster_by_shp.py',[ortho_dem,bound_buffer_fn])
-        print(clip_log)
-        asp.run_cmd('trim_ndv.py',[os.path.splitext(ortho_dem)[0]+'_shpclip.tif'])
+
+    if diff_dem:
+        misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
+        misc.ndvtrim_function(os.path.splitext(ortho_dem)[0]+'_shpclip.tif')
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:
         ortho_dem = coreg_dem
@@ -170,9 +181,16 @@ def main():
 
     if 2 in steps2run:
         print("Generating Frame Cameras")
-        frame_cam_cmd = ['-mode','triplet','-t','rpc','-img',img_folder,'-outdir',cam_gcp_directory,
-                    '-overlap_pkl',overlap_stereo_pkl,'-dem',ortho_dem]
-        asp.run_cmd('skysat_preprocess.py',frame_cam_cmd)
+        cam_gen_log = workflow.skysat_preprocess(img_folder,mode='triplet',
+        product_level='l1b',overlap_pkl=overlap_stereo_pkl,dem=ortho_dem,
+        outdir=cam_gcp_directory)
+
+        now = datetime.now()
+        log_fn = os.path.join(cam_gcp_directory,'camgen_{}.log'.format(now))
+        print("saving subprocess camgen log at {}".format(log_fn))
+        with open(log_fn,'w') as f:
+            for log in cam_gen_log:
+                f.write(log)
 
     if 3 in steps2run:
         # specify whether to run using maprojected sessions or not
@@ -180,67 +198,75 @@ def main():
         if map:
             # orthorectify all the images first
             print("Orthorectifying images using RPC camera")
-            ortho_cmd = ['-img_folder',img_folder,'-session',init_ortho_session,'-out_folder',init_ortho_dir,
-                        '-tsrs',epsg_code,'-DEM',ortho_dem,'-mode','science','-orthomosaic','0','-copy_rpc','1','-data','triplet']
-            #Note above, copy_rpc = 1, because we want the orthoimages to have RPC info embedded in gdal header for stereo later
-            asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+            workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=init_ortho_session,
+                                                       outdir=init_ortho_dir,tsrs=epsg_code,dem=ortho_dem,mode='science',
+                                                       overlap_list=overlap_stereo_txt,copy_rpc=1,orthomosaic=0)
             init_stereo_input_img_folder = init_ortho_dir
         else:
             init_stereo_input_img_folder = img_folder
         print("Running stereo using RPC cameras")
-        stereo_cmd = ['-mode','triplet','-threads','2','-t',init_stereo_session,'-img',init_stereo_input_img_folder,
-                     '-overlap_pkl',overlap_stereo_pkl,'-dem',ortho_dem,'-block','1','-crop_map','0','-outfol',init_stereo_dir]
         # Note crop_map = 0 option, this does not do warping to common extent and resolution for orthoimages before stereo, because we want to 
         # presrve this crucail information for correctly unwarped dense match points
-        asp.run_cmd('skysat_stereo_cli.py',stereo_cmd)
+        workflow.execute_skysat_stereo(init_stereo_input_img_folder,init_stereo_dir,
+                                       mode='triplet',session=init_stereo_session,
+                                       dem=ortho_dem,texture='normal',writeout_only=False,
+                                       block=1,crop_map=0,threads=2,overlap_pkl=overlap_stereo_pkl,
+                                       cross_track=False)
+        
 
         # copy dense match file to ba directory
-        dense_match_cmd = ['-img', img_folder, '-orig_pickle', overlap_stereo_pkl, '-stereo_dir', init_stereo_dir, 
-                          '-ba_dir', init_ba, '-modify_overlap','0']
-        asp.run_cmd('prep_dense_ba_run.py',dense_match_cmd)
+        workflow.dense_match_wrapper(stereo_master_dir=os.path.abspath(init_stereo_dir),
+                                     ba_dir=os.path.abspath(init_ba),modify_overlap=0) 
 
 
     if 4 in steps2run:
         # this is bundle adjustment step
         # we use dense files copied from previous step
+        
         ba_prefix = os.path.join(init_ba,'run')
-        ba_cmd = ['-mode', 'full_triplet', '-t', 'nadirpinhole', '-img', img_folder, 
-                  '-cam', cam_gcp_directory, '-overlap_list', overlap_stereo_txt, '-num_iter', '700', '-num_pass', '2','-ba_prefix',ba_prefix]
         print("running bundle adjustment")
-        asp.run_cmd('ba_skysat.py',ba_cmd)
+        ba.bundle_adjust_stable(img=img_folder,ba_prefix=ba_prefix,cam=os.path.abspath(cam_gcp_directory),
+                                session='nadirpinhole',overlap_list=overlap_stereo_txt,
+                                num_iter=700,num_pass=2,mode='full_triplet')
+        
 
 
     if 5 in steps2run:
         # this is where final stereo will take place
         # first we orthorectify again, if map = True
         if map:
+            workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=final_ortho_session,
+                                                       outdir=intermediate_ortho_dir,tsrs=epsg_code,dem=ortho_dem,
+                                                       ba_prefix=ba_prefix+'-run',mode='science',overlap_list=overlap_stereo_txt,
+                                                       copy_rpc=1,orthomosaic=0)
             print("Running intermediate orthorectification with bundle adjusted pinhole cameras")
-            ortho_cmd = ['-img_folder',img_folder,'-session',final_ortho_session,'-out_folder',intermediate_ortho_dir,
-                        '-tsrs',epsg_code,'-DEM',ortho_dem,'-mode','science','-orthomosaic','0','-data','triplet','-ba_prefix',ba_prefix+'-run']
-            asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+            
             final_stereo_input_img_folder = intermediate_ortho_dir
         else:
             final_stereo_input_img_folder = img_folder
         # now run stereo
-        stereo_cmd = ['-mode','triplet','-threads','2','-t',final_stereo_session,'-img',final_stereo_input_img_folder,
-                     '-overlap_pkl',overlap_stereo_pkl,'-dem',ortho_dem, '-crop_map','1', '-outfol', final_stereo_dir, 
-                      '-ba_prefix',ba_prefix+'-run','-block',str(args.block_matching)]
         print("Running final stereo reconstruction")
-        asp.run_cmd('skysat_stereo_cli.py',stereo_cmd)
+        workflow.execute_skysat_stereo(final_stereo_input_img_folder,
+                                       final_stereo_dir,ba_prefix=ba_prefix+'-run',
+                                       mode='triplet',session=final_stereo_session,
+                                       dem=ortho_dem,texture='normal',writeout_only=False,
+                                       block=args.block_matching,crop_map=1,threads=2,overlap_pkl=overlap_stereo_pkl,
+                                       cross_track=False)
+        
 
    
     if 6 in steps2run:
 
         pc_list = sorted(glob.glob(os.path.join(final_stereo_dir,'20*/2*/run-PC.tif'))) 
         print(f"Identified {len(pc_list)} clouds")
-        # this is dem gridding followed by mosaicing
-        dem_grid_cmd = ['-mode','gridding_only', '-tr', '2', '-point_cloud_list'] + pc_list
         
-        asp.run_cmd('skysat_pc_cam.py',dem_grid_cmd)
+        # this is dem gridding followed by mosaicing
+        workflow.gridding_wrapper(pc_list,tr=2)
+        
         print("Mosaicing DEMs")
-        dem_mos_cmd = ['-mode','triplet','-DEM_folder',final_stereo_dir,'-out_folder',mos_dem_dir]
-        asp.run_cmd('skysat_dem_mos.py',dem_mos_cmd)
-
+        
+        workflow.dem_mosaic_wrapper(dir=os.path.abspath(final_stereo_dir),mode='triplet',
+                                    out_folder=os.path.abspath(mos_dem_dir))
 
     if 7 in steps2run:
         # this is DEM alignment step
@@ -250,36 +276,40 @@ def main():
         # actually use dem_mask.py with options of nlcd, nlcd_filter (not_forest) and of course RGI glacier polygons
         if args.mask_dem == 1: 
             # this might change for non-US sites, best to use bareground files
-            mask_dem_cmd = ['--nlcd','--glaciers']
+            if args.mask_dem_opt == 'glaciers':
+                mask_list = ['glaciers']
+            elif args.msak_dem_opt == 'glaciers+nlcd':
+                mask_list = ['nlcd','glaciers'] 
             print("Masking reference DEM to static surfaces") 
-            asp.run_cmd('dem_mask.py',mask_dem_cmd+[os.path.abspath(coreg_dem)])
+            misc.dem_mask_disk(mask_list,os.path.abspath(coreg_dem))
             coreg_dem = os.path.splitext(coreg_dem)[0]+'_ref.tif'
         
         #now perform alignment
-        median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'triplet_median_mos.tif'))[0]
-        dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','40','-refdem',coreg_dem,
-                         '-source_dem',median_mos_dem,'-outprefix',os.path.join(alignment_dir,'run')]
+        median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'multiview_*_median_mos.tif'))[0]
         print("Aligning DEMs")
-        asp.run_cmd('skysat_pc_cam.py',dem_align_cmd)
-
+        workflow.alignment_wrapper_single(coreg_dem,source_dem=median_mos_dem,max_displacement=40,
+                                          outprefix=os.path.join(alignment_dir,'run'))
+        
     if 8 in steps2run:
         # this steps aligns the frame camera models
         camera_list = sorted(glob.glob(os.path.join(init_ba,'run-run-*.tsai')))
         print(f"Detected {len(camera_list)} cameras to be registered to DEM")
         alignment_vector = glob.glob(os.path.join(alignment_dir,'alignment_vector.txt'))[0]
-        camera_align_cmd = ['-mode','align_cameras','-transform',alignment_vector,
-                            '-outfol',aligned_cam_dir,'-cam_list']+camera_list
+        if not os.path.exists(aligned_cam_dir):
+            os.makedirs(aligned_cam_dir)
         print("Aligning cameras")
-        asp.run_cmd('skysat_pc_cam.py',camera_align_cmd)
+        workflow.align_cameras_wrapper(input_camera_list=camera_list,transform_txt=alignment_vector,
+                                       outfolder=aligned_cam_dir)
 
     if 9 in steps2run:
         # this produces final georegistered orthomosaics
         georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]
-        ortho_cmd = ['-img_folder',img_folder,'-session',final_ortho_session,'-out_folder',final_ortho_dir,
-                        '-tsrs',epsg_code,'-DEM',georegistered_median_dem,'-mode','science','-orthomosaic','1','-data','triplet',
-		     '-ba_prefix',os.path.join(aligned_cam_dir,'run-run')]
         print("Running final orthomsaic creation")
-        asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+        workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=final_ortho_session,
+                                                       outdir=final_ortho_dir,tsrs=epsg_code,dem=georegistered_median_dem,
+                                                       ba_prefix=os.path.join(aligned_cam_dir,'run-run'),mode='science',
+                                                       overlap_list=overlap_stereo_txt,copy_rpc=0,orthomosaic=1)
+        
     if 10 in steps2run:
         # this produces a final plot of orthoimage,DEM, NMAD and countmaps
         ortho = glob.glob(os.path.join(final_ortho_dir,'*finest_orthomosaic.tif'))[0]

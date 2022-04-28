@@ -6,15 +6,16 @@ import geopandas as gpd
 from skysat_stereo import asp_utils
 import numpy as np
 import pandas as pd
-import gdal
+from osgeo import gdal
 import os,sys,glob
 from shapely import wkt
-import gdalconst
-from progressbar import ProgressBar
+from osgeo import gdalconst
 import re
 from tqdm import tqdm
 from datetime import datetime
 from multiprocessing import cpu_count
+from p_tqdm import p_map
+import itertools
 
 
 def skysat_footprint(img_fn,incrs=None):
@@ -47,8 +48,8 @@ def skysat_footprint(img_fn,incrs=None):
     mx,my = asp_utils.rpc2map(img_fn,img_x,img_y,img_z)
     coord_list = list(zip(mx,my))
     footprint_poly = Polygon(coord_list)
-    geo_crs = {'init':'epsg:4326'}
-    footprint_shp = gpd.GeoDataFrame(index=[0],geometry=[footprint_poly],crs=geo_crs)
+    geo_crs = 'EPSG:4326'
+    footprint_shp = gpd.GeoDataFrame({'img':[img_fn],'geometry':[footprint_poly]},crs=geo_crs)
     if incrs:
         footprint_shp = footprint_shp.to_crs(incrs)
     return footprint_shp
@@ -137,7 +138,8 @@ def crop_sim_res_extent(img_list, outfol, vrt=False,rpc=False):
         list containing the two warped images, first entry (left image) is the image which was of finer resolution (more nadir) initially
         If the images do not intersect, two None objects are returned in the list
     """
-    resample_alg = 'lanczos'
+    #resample_alg = 'lanczos'
+    resample_alg = 'cubic'
     img1 = img_list[0]
     img2 = img_list[1]
     img1_ds = iolib.fn_getds(img1)
@@ -273,7 +275,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
         stereo_args = [ref_image] + source_images + [ref_camera] + source_cameras
         if block == 1:
             spm = 2
-            stereo_mode = 0
+            stereo_mode = 'asp_bm'
             corr_tile_size = 1024
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -285,7 +287,7 @@ def video_mvs(img_folder,t,cam_fol=None,ba_prefix=None,dem=None,sampling_interva
                 lv = 5
         else:
             spm = 2
-            stereo_mode = 2
+            stereo_mode = 'asp_mgm'
             corr_tile_size = 6400
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -453,7 +455,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         if block == 1:
             print("Performing block matching")
             spm = 2 #Bayes EM
-            stereo_mode = 0 #Block matching
+            stereo_mode = 'asp_bm' #Block matching
             cost_mode = 2 #NCC
             corr_tile_size = 1024
             if texture == 'low':
@@ -467,7 +469,7 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         else:
             cost_mode = 4 #Preffered MGM cost-mode
             spm = 2 # Bayes EM
-            stereo_mode = 2 #MGM
+            stereo_mode = 'asp_mgm' #MGM
             corr_tile_size = 6400
             if texture == 'low':
                 rfne_kernel = [21, 21]
@@ -482,7 +484,164 @@ def prep_video_stereo_jobs(img_folder,t,threads=4,cam_fol=None,ba_prefix=None,de
         job_list.append(stereo_opt + stereo_args)
     return job_list
 
-def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',crop_map=True,outfol=None,block=0,entry_point='pprc'):
+def prepare_stereo_jobs_wrapper(img1,img2,img_list,outfolder,t,threads=2,crop_map=False,ba_prefix=None,
+    cam_fol=None,dem=None,block=False,texture='normal',entry_point='pprc'):
+    """
+    pairwise job preparation wrapper, intended to help in parallelization
+    Parameters
+    ------------
+    img1: str
+        path to first image
+    img2: str
+        path to second image
+    img_list: str
+        master list containing path to all input images
+    outfolder: str
+        path to stereo folder
+    t: str
+        Session to use for stereo processing
+    threads: int
+        number of threads to use for 1 pairwise processing
+    ba_prefix: str
+        ba_prefix for locating the refined tsai camera models, or for locating the *.adjust files for RPC bundle adjusted cameras
+    cam_fol: str
+        Folder containing tsai camera models (None if using RPC models or using bundle adjusted tsai cameras
+    dem: str
+        Path to DEM used for mapprojection
+    texture: str
+        use option 'low' input image texture is low, 'normal' for normal textured images. This is used for determining the correlation and refinement kernel
+    crop_map: bool
+        crop images to map extent if True. Cropping to common resolution and extent should give best results in mapprojected images
+    block: int
+        Select 0 for the defualt MGM matching, 1 for block matching
+    entry_point: str
+        Select stage from which to start ASP processing (pprc,corr,rfne,fltr,tri)
+    """
+    
+    IMG1 = os.path.splitext(os.path.basename(img1))[0]
+    IMG2 = os.path.splitext(os.path.basename(img2))[0]
+    out = outfolder + '/' + IMG1 + '__' + IMG2
+
+    # camera session
+    if 'rpc' in t:
+        rpc = True
+    else:
+        rpc = False
+    # https://www.geeksforgeeks.org/python-finding-strings-with-given-substring-in-list/
+    try:
+        img1 = [x for x in img_list if re.search(IMG1, x)][0]
+        img2 = [x for x in img_list if re.search(IMG2, x)][0]
+        
+    
+    except BaseException:
+       print("Images not found")
+       return
+ 
+    if 'map' in t:
+        out = out + '_map'
+        try:
+            if crop_map:
+                
+                in_img1, in_img2 = crop_sim_res_extent([img1, img2], out,rpc=rpc)
+                
+            else:
+                in_img1, in_img2 = [img1,img2]
+            
+        except BaseException:
+            return
+
+    else:
+        in_img1 = img1
+        in_img2 = img2
+
+    out = os.path.join(out, 'run')
+    IMG1 = os.path.splitext(os.path.basename(in_img1))[0]
+    IMG2 = os.path.splitext(os.path.basename(in_img2))[0]
+    if 'map' in t:
+        IMG1 = IMG1.split('_map',15)[0]
+        IMG2 = IMG2.split('_map',15)[0]
+
+    # look for camera files
+    if 'pinhole' in t:
+        if ba_prefix:
+            cam1 = glob.glob(
+                os.path.abspath(ba_prefix) + '-' + IMG1 + '*.tsai')[0]
+            cam2 = glob.glob(
+                os.path.abspath(ba_prefix) + '-' + IMG2 + '*.tsai')[0]
+        else:
+            cam1 = glob.glob(os.path.join(os.path.abspath(cam_fol),'*'+IMG1 + '*.tsai'))[0]
+            cam2 = glob.glob(os.path.join(os.path.abspath(cam_fol),'*'+IMG2 + '*.tsai'))[0]
+        stereo_args = [in_img1, in_img2, cam1, cam2, out]
+        align = 'AffineEpipolar'
+        ba = None
+    
+    # for rpc model
+    elif 'rpc' in t:
+        stereo_args = [in_img1, in_img2, out]
+        align = 'AffineEpipolar'
+        if ba_prefix:
+            ba = os.path.abspath(ba_prefix)
+        else:
+            ba = None
+    
+    # add DEM if orhtorectified
+    if 'map' in t:
+        stereo_args.append(dem)
+        align = 'None'
+    
+    # set stereo parameters
+    if block == 1:
+        print("Performing block matching")
+        xcorr = 2
+        spm = 2
+        stereo_mode = 'asp_bm'
+        cost_mode = 2
+        corr_tile_size = 1024
+        if texture == 'low':
+            rfne_kernel = [21, 21]
+            corr_kernel = [35, 35]
+            lv = 5
+        else:
+            rfne_kernel = [15, 15]
+            corr_kernel = [21, 21]
+            lv = 5
+    
+    else:
+        xcorr = -1
+        cost_mode = 4
+        spm = 9
+        stereo_mode = 'asp_mgm'
+        corr_tile_size = 6400
+        if texture == 'low':
+            rfne_kernel = [21, 21]
+            corr_kernel = [9, 9]
+            lv = 5
+        else:
+            rfne_kernel = [15, 15]
+            corr_kernel = [7, 7]
+            lv = 5
+    
+    # entry_point logic
+    if entry_point == 'pprc':
+        ep = 0
+    elif entry_point == 'corr':
+        ep = 1
+    elif entry_point == 'rfne':
+        ep = 3
+    elif entry_point == 'fltr':
+        ep = 4
+    elif entry_point == 'tri':
+        ep = 5
+            
+    # Prepare stereo options
+    stereo_opt = asp_utils.get_stereo_opts(session=t,ep = ep, threads=threads,ba_prefix=ba,
+        align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,
+        spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size,xcorr=xcorr)
+    #print(stereo_opt) 
+    return stereo_opt + stereo_args
+
+
+def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam_fol=None,dem=None,texture='high',crop_map=True,outfol=None,block=0,entry_point='pprc',cross_track=False):
     """
     Builds subprocess job list for triplet collection pairwise implementation
 
@@ -523,127 +682,29 @@ def triplet_stereo_job_list(overlap_list,t,img_list,threads=4,ba_prefix=None,cam
     print(img_list)
     l_img_list = []
     r_img_list = []
-    triplet_df = prep_trip_df(overlap_list)
+    triplet_df = prep_trip_df(overlap_list,cross_track=cross_track)
+    if not os.path.exists(outfol):
+        os.makedirs(outfol)
     df_list = [x for _, x in triplet_df.groupby('identifier_text')]
     for df in df_list:
         outfolder = os.path.join(outfol, df.iloc[0]['identifier_text'])
         img1_list = df.img1.values
         img2_list = df.img2.values
-        pbar = ProgressBar()
         print("preparing stereo jobs")
-        for i, process in enumerate(pbar(img1_list)):
-            img1 = img1_list[i]
-            img2 = img2_list[i]
-            IMG1 = os.path.splitext(os.path.basename(img1))[0]
-            IMG2 = os.path.splitext(os.path.basename(img2))[0]
-            out = outfolder + '/' + IMG1 + '__' + IMG2
-            if 'rpc' in t:
-                rpc = True
-            else:
-                rpc = False
-            # https://www.geeksforgeeks.org/python-finding-strings-with-given-substring-in-list/
-            try:
-                img1 = [x for x in img_list if re.search(IMG1, x)][0]
-                img2 = [x for x in img_list if re.search(IMG2, x)][0]
+        num_img = len(img1_list)
+        job_list_ = p_map(prepare_stereo_jobs_wrapper,img1_list,img2_list,[img_list]*num_img,
+            [outfolder]*num_img,[t]*num_img,[threads]*num_img,[crop_map]*num_img,[ba_prefix]*num_img,
+            [cam_fol]*num_img,[dem]*num_img,[block]*num_img,[texture]*num_img,[entry_point]*num_img)
+       
+        print(type(job_list_))
+        job_list.append(job_list_)
 
-            except BaseException:
-                continue
-            if 'map' in t:
-                out = out + '_map'
-                try:
-                    if crop_map:
-                        in_img1, in_img2 = crop_sim_res_extent([img1, img2], out,rpc=rpc)
-                    else:
-                        in_img1, in_img2 = [img1,img2]
-                except BaseException:
-                    continue
-            else:
-                in_img1 = img1
-                in_img2 = img2
-            out = os.path.join(out, 'run')
-            IMG1 = os.path.splitext(os.path.basename(in_img1))[0]
-            IMG2 = os.path.splitext(os.path.basename(in_img2))[0]
-            if 'map' in t:
-                IMG1 = IMG1.split('_map',15)[0]
-                IMG2 = IMG2.split('_map',15)[0]
-            if 'pinhole' in t:
-                if ba_prefix:
-                    cam1 = glob.glob(
-                        os.path.abspath(ba_prefix) + '-' + IMG1 + '*.tsai')[0]
-                    cam2 = glob.glob(
-                        os.path.abspath(ba_prefix) + '-' + IMG2 + '*.tsai')[0]
-                else:
-                    cam1 = glob.glob(os.path.join(os.path.abspath(cam_fol),'*'+IMG1 + '*.tsai'))[0]
-                    cam2 = glob.glob(os.path.join(os.path.abspath(cam_fol),'*'+IMG2 + '*.tsai'))[0]
-                stereo_args = [in_img1, in_img2, cam1, cam2, out]
-                align = 'AffineEpipolar'
-                ba = None
-            elif 'rpc' in t:
-                stereo_args = [in_img1, in_img2, out]
-                align = 'AffineEpipolar'
-                if ba_prefix:
-                    ba = os.path.abspath(ba_prefix)
-                else:
-                    ba = None
-            if 'map' in t:
-                stereo_args.append(dem)
-                align = 'None'
-            if block == 1:
-                print("Performing block matching")
-                spm = 2
-                stereo_mode = 0
-                cost_mode = 2
-                corr_tile_size = 1024
-                if texture == 'low':
-                    rfne_kernel = [21, 21]
-                    corr_kernel = [35, 35]
-                    lv = 5
-                else:
-                    rfne_kernel = [15, 15]
-                    corr_kernel = [21, 21]
-                    lv = 5
-            else:
-                cost_mode = 4
-                spm = 2
-                stereo_mode = 2
-                corr_tile_size = 6400
-                if texture == 'low':
-                    rfne_kernel = [21, 21]
-                    corr_kernel = [9, 9]
-                    lv = 5
-                else:
-                    rfne_kernel = [15, 15]
-                    corr_kernel = [7, 7]
-                    lv = 5
-            #write out file for dense matches logic
-            # if mapprojected stereo, then need to update overlap list
-            if 'map' in t:
-            	l_img_list.append(os.path.basename(in_img1).split('_warp.tif',15)[0]+'.tif')
-            	r_img_list.append(os.path.basename(in_img2).split('_warp.tif',15)[0]+'.tif')
-            # entry_point logic
-            if entry_point == 'pprc':
-                ep = 0
-            elif entry_point == 'corr':
-                ep = 1
-            elif entry_point == 'rfne':
-                ep = 3
-            elif entry_point == 'fltr':
-                ep = 4
-            elif entry_point == 'tri':
-                ep = 5
-            # Prepare stereo options
-            stereo_opt = asp_utils.get_stereo_opts(session=t,ep = ep, threads=threads,ba_prefix=ba,align=align,corr_kernel=corr_kernel,lv=lv,rfne_kernel=rfne_kernel,stereo_mode=stereo_mode,spm=spm,cost_mode=cost_mode,corr_tile_size=corr_tile_size)
-            job_list.append(stereo_opt + stereo_args)
-    overlap_new = os.path.join(outfol,'overlap_list_as_per_dense_ba.pkl')
-    df_out = pd.DataFrame({'img1':l_img_list,'img2':r_img_list})
-    print("Saving modified overlap pkl as per dense match criteria at {}".format(overlap_new))
-    if not os.path.exists(outfol):
-        os.makedirs(outfol)
-    #df.to_pickle(overlap_new)
-    #return concatenated job list
-    return job_list
+     
+    
+    return list(itertools.chain.from_iterable(job_list))
+   
 
-def prep_trip_df(overlap_list, true_stereo=True):
+def prep_trip_df(overlap_list, true_stereo=True,cross_track=False):
     """
     Prepare dataframe from input plckle file containing overlapping images with percentages
     Parameters
@@ -676,9 +737,10 @@ def prep_trip_df(overlap_list, true_stereo=True):
     df['time2'] = [os.path.basename(x).split('_', 15)[1] for x in df.img2.values]
     if true_stereo:
         # returned df has only those pairs which form true stereo
-        df = df[df['date1'] == df['date2']]
         df = df[df['time1'] != df['time2']]
-        df = df[df['sat1'] == df['sat2']]
+        if not cross_track:
+            df = df[df['date1'] == df['date2']]
+            df = df[df['sat1'] == df['sat2']]
     # filter to overlap percentage of around 5%
     df['overlap_perc'] = df['overlap_perc'] * 100
     df = df[(df['overlap_perc'] > 2)]
@@ -737,30 +799,21 @@ def sort_img_list(img_list):
         list of triplet stereo images
     Returns
     ----------
-    for_img_list: list
-        list containing filenames for forward images
-    nadir_img_list: list
-        list containing filenames for nadir images
-    aft_img_list: list
-        list containing filenames for aft images
-    for_time: str
-        the single time for all forward viewing images
-    nadir_time: str
-        the single time for all nadir viewing images
-    aft_time: str
-        the single time for all aft viewing images
+    sorted_img_list: list 
+        list of list containing filenames for images captured at 1 pushframe timestamp
+    time_list: list
+        list of strings containing timestamps
     """
     #list of unique image acquisition time list
-    time_list = sorted(list(np.unique(np.array([os.path.basename(img).split('_',15)[1] for img in img_list]))))
-    for_time = time_list[0]
-    nadir_time = time_list[1]
-    aft_time = time_list[2]
+    time_list = sorted(list(np.unique(np.array([os.path.basename(img).split('_',15)[0]+'_'+os.path.basename(img).split('_',15)[1] for img in img_list]))))
+
     #make seperate image list
     #https://stackoverflow.com/questions/2152898/filtering-a-list-of-strings-based-on-contents
-    for_img_list = [k for k in img_list if for_time in k]
-    nadir_img_list = [k for k in img_list if nadir_time in k]
-    aft_img_list = [k for k in img_list if aft_time in k]
-    return (for_img_list,nadir_img_list,aft_img_list,for_time,nadir_time,aft_time)
+    sorted_img_list = []
+    for time in time_list:
+        sorted_img_list.append([k for k in img_list if time in k])
+    
+    return (sorted_img_list,time_list)
 
 def res_sort(img_list):
     """
@@ -817,3 +870,51 @@ def filter_video_dem_by_nmad(ds_list,min_count=2,max_nmad=5):
     count_filt_c = np.ma.array(count_filt,mask = invalid_mask)
     dem_filt = np.ma.array(dem,mask = invalid_mask)
     return dem_filt,count_filt_c,nmad_filt_c
+
+
+def modernize_frame_index(frame_index_fn,return_frame_index=True,outfn=None):
+    """
+    Update frame_index to what ASP understands currently, i.e.,
+    Update name columns and geometry columns
+    
+    Parameters
+    -------------
+    frame_index_fn: string
+        path to frame_index
+    outfn (Optional): string
+        path to output frame_index filename
+    """
+    from shapely import wkt
+    from shapely.geometry.polygon import orient
+    
+    def _correct_geom(row):
+        return wkt.loads(row['geom'])
+    frame_index = pd.read_csv(frame_index_fn)
+    frame_index['geom'] = frame_index.apply(_correct_geom,axis=1)
+    
+    # orient the Polygon geometry
+    updated_geomlist_asp_convention = [orient(test_geom,-1) for test_geom in frame_index['geom'].values]
+    
+    # remove the space between POLYGON and ((# 
+    # this might not be required in the new release 
+    updated_geomlist_asp_convention = [f"POLYGON(({str(test_geom).split(' ((')[1]}" for test_geom in updated_geomlist_asp_convention]
+    
+    # remove the repeated last coordinate
+    updated_geomlist_asp_convention = [','.join(test_geom.split(',')[:-1])+'))' for test_geom in updated_geomlist_asp_convention]
+    
+    # update geometry column
+    frame_index['geom'] = updated_geomlist_asp_convention
+    
+    # update name
+    frame_index['name'] = [os.path.splitext(name)[0] for name in frame_index.filename.values]
+    print(os.path.splitext(frame_index.filename.values[0])[0])
+
+    # writeout
+    if not outfn:
+        outfn = os.path.splitext(frame_index_fn)[0] + '_with_orient.csv'
+    frame_index.to_csv(outfn,index=False)
+    
+    if return_frame_index:
+        return frame_index
+
+

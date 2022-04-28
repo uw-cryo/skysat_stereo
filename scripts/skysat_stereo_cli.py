@@ -7,6 +7,8 @@ import argparse
 import os,sys,glob
 from multiprocessing import cpu_count
 from p_tqdm import p_map
+from skysat_stereo import skysat_stereo_workflow as workflow
+from tqdm import tqdm
 
 def getparser():
     parser = argparse.ArgumentParser(description='Script for performing stereo jobs, generalised for skysat video and triplet stereo products')
@@ -39,70 +41,26 @@ def getparser():
     parser.add_argument('-block', default=0, type=int, choices=mvs_choices, help='1: use block matching instead of default MGM (default: %(default)s')
     parser.add_argument('-full_extent',type=int,choices = mvs_choices,default=1,
                         help='Selecting larger intervals can result in lower footprint output DEM, if 1: then DEMs with smaller interval image pairs will be padded at the begining and end of the video sequence (default: %(default)s)')
+    parser.add_argument('-writeout_only', action='store_true', help='writeout_jobs to a text file, not run')
+    parser.add_argument('-job_fn',type=str,help='text file to write stereo jobs to',default=None)
+    parser.add_argument('-cross_track',action='store_true', help='attempt stereo for cross_track pairs as well')
     return parser
+
 
 def main():
     parser = getparser()
     args = parser.parse_args()
     img = os.path.abspath(args.img)
-    try:
-        img_list = sorted(glob.glob(os.path.join(img, '*.tif')))
-        temp = img_list[1]
-    except BaseException:
-        img_list = sorted(glob.glob(os.path.join(img, '*.tiff')))
-    if len(img_list) == 0:
-        print("No images in the specified folder, exiting")
-        sys.exit()
-    mode = args.mode
-    session = args.t
-    ba_prefix = args.ba_prefix
-    overlap_list_fn = args.overlap_pkl
-    frame_index = args.frame_index
-    dem = args.dem
-    texture = args.texture
-    sampling_interval = args.sampling_interval
-    if args.cam:
-        cam_folder = args.cam
-    if args.ba_prefix:
-        ba_prefix = args.ba_prefix
-    outfol = args.outfol
-    if mode == 'video':
-        # assume for now that we are still operating on a fixed image interval method
-        # can accomodate different convergence angle function method here.
-        frame_gdf = skysat.parse_frame_index(frame_index)
-        # for now hardcording sgm,mgm,kernel params, should accept as inputs.
-        # Maybe discuss with David with these issues/decisions when the overall
-        # system is in place
-        if args.mvs == 1:
-            job_list = skysat.video_mvs(img,t=session,cam_fol=args.cam,ba_prefix=args.ba_prefix,dem=args.dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol, block=args.block,frame_index=frame_gdf)
-        else:
-            if args.full_extent == 1:
-                full_extent = True
-            else:
-                full_extent=False
-            job_list = skysat.prep_video_stereo_jobs(img,t=session,cam_fol=args.cam,ba_prefix=args.ba_prefix,dem=args.dem,sampling_interval=sampling_interval,texture=texture,outfol=outfol,block=args.block,frame_index=frame_gdf,full_extent=full_extent,entry_point=args.entry_point)
-    elif mode == 'triplet':
-        if args.crop_map == 1:
-            crop_map = True
-        else: 
-            crop_map = False
-        job_list = skysat.triplet_stereo_job_list(t=args.t,
-                threads = args.threads,overlap_list=args.overlap_pkl, img_list=img_list, ba_prefix=args.ba_prefix, cam_fol=args.cam, dem=args.dem, crop_map=crop_map,texture=texture, outfol=outfol, block=args.block,entry_point=args.entry_point)
-    # decide on number of processes
-    # if block matching, Plieades is able to handle 30-40 4 threaded jobs on bro node
-    # if MGM/SGM, 25 . This stepup is arbitrariry, research on it more.
-    # next build should accept no of jobs and stereo threads as inputs
-    print(job_list[0])
-    n_cpu = cpu_count()
-    # no of parallel jobs with user specified threads per job
-    jobs = int(n_cpu/args.threads)
-    stereo_log = p_map(asp.run_cmd,['stereo']*len(job_list), job_list, num_cpus=jobs)
-    stereo_log_fn = os.path.join(outfol,'stereo_log.log')
-    print("Consolidated stereo log saved at {}".format(stereo_log_fn))
-    #with open(stereo_log_fn,'w') as f:
-     #   for logs in stereo_log:
-      #      f.write(logs)
+
+    workflow.execute_skysat_stereo(img,args.outfol,args.mode,session=args.t,
+        dem=args.dem,texture=args.texture,sampling_interval=args.sampling_interval,
+        cam_folder=args.cam,ba_prefix=args.ba_prefix,writeout_only=args.writeout_only,
+        mvs=args.mvs,block=args.block,crop_map=args.crop_map,full_extent=args.full_extent,
+        entry_point=args.entry_point,threads=args.threads,overlap_pkl=args.overlap_pkl,
+        frame_index=args.frame_index,job_fn=args.job_fn,cross_track=args.cross_track)
+    
     print("Script is complete")
 
 if __name__ == "__main__":
     main()
+
