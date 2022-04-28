@@ -434,15 +434,15 @@ def gridding_wrapper(pc_list,tr,tsrs=None):
     
     
 def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
-                             align,trans_only=0,initial_align=None):
+                             align='point-to-plane',trans_only=0,initial_align=None):
     if trans_only == 0:
         trans_only = False
     else:
         trans_only = True
     asp.dem_align(ref_dem,source_dem,max_displacement,outprefix,align,
-                  trans_only,threads=iolib.cpu_count(),intial_align=initial_align)
+                  trans_only,threads=iolib.cpu_count(),initial_align=initial_align)
     
-def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,initial_align=None,
+def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align='point-to-plane',initial_align=None,
                             trans_only=0):
     from p_tqdm import p_umap
     outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
@@ -481,6 +481,7 @@ def align_cameras_wrapper(input_camera_list,transform_txt,outfolder,rpc=0,dem='N
     
 
 def dem_mosaic_wrapper(dir,mode='triplet',out_folder=None,identifier=None,tile_size=None,filter_dem=1,min_video_count=2,max_video_nmad=5):
+    from p_tqdm import p_map
     if out_folder is None:
         out_folder = os.path.join(dir,'composite_dems')
     

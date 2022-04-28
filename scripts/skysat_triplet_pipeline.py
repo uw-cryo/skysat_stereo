@@ -295,6 +295,8 @@ def main():
         camera_list = sorted(glob.glob(os.path.join(init_ba,'run-run-*.tsai')))
         print(f"Detected {len(camera_list)} cameras to be registered to DEM")
         alignment_vector = glob.glob(os.path.join(alignment_dir,'alignment_vector.txt'))[0]
+        if not os.path.exists(aligned_cam_dir):
+            os.makedirs(aligned_cam_dir)
         print("Aligning cameras")
         workflow.align_cameras_wrapper(input_camera_list=camera_list,transform_txt=alignment_vector,
                                        outfolder=aligned_cam_dir)
@@ -306,7 +308,7 @@ def main():
         workflow.execute_skysat_orhtorectification(images=img_list,data='triplet',session=final_ortho_session,
                                                        outdir=final_ortho_dir,tsrs=epsg_code,dem=georegistered_median_dem,
                                                        ba_prefix=os.path.join(aligned_cam_dir,'run-run'),mode='science',
-                                                       overlap_list=None,copy_rpc=0,orthomosaic=1)
+                                                       overlap_list=overlap_stereo_txt,copy_rpc=0,orthomosaic=1)
         
     if 10 in steps2run:
         # this produces a final plot of orthoimage,DEM, NMAD and countmaps
