@@ -409,6 +409,7 @@ def execute_skysat_stereo(img,outfol,mode,session='rpc',dem=None,texture='high',
 
                     
 def gridding_wrapper(pc_list,tr,tsrs=None):
+    from p_tqdm import p_map
     if tsrs is None:
         print("Projected Target CRS not provided, reading from the first point cloud")
         
@@ -443,6 +444,7 @@ def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
     
 def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,initial_align=None,
                             trans_only=0):
+    from p_tqdm import p_umap
     outprefix_list=['{}_aligned_to{}'.format(os.path.splitext(source_dem)[0],os.path.splitext(os.path.basename(ref_dem))[0]) for source_dem in source_dem_list]
     if trans_only == 0:
         trans_only = False
@@ -459,6 +461,7 @@ def alignment_wrapper_multi(ref_dem,source_dem_list,max_displacement,align,initi
            align_list,trans_list,[1]*n_source,initial_align,num_cpus = iolib.cpu_count())
     
 def align_cameras_wrapper(input_camera_list,transform_txt,outfolder,rpc=0,dem='None',img_list=None):
+    from p_tqdm import p_umap
     n_cam=len(input_camera_list)
     if (rpc == 1) & (dem != 'None'):
         print("Will also write RPC files")
