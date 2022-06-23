@@ -12,6 +12,7 @@ dependencies:
  - gdal
  - rasterio
  - geopandas
+ - pygeos
  - shapely
  - contextily
  - descartes
