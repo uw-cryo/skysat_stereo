@@ -118,7 +118,7 @@ def get_ba_opts(ba_prefix, ip_per_tile=4000,camera_weight=None,translation_weigh
 def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=None,
                         input_adjustments=None,overlap_list=None,gcp=None,
                         mode='full_triplet',bound=None,camera_param2float='trans+rot',
-                        dem=None,num_iter=2000,num_pass=2):
+                        dem=None,num_iter=2000,num_pass=2,frame_index=None,gcp=None):
     """
     """
     img_list = sorted(glob.glob(os.path.join(img,'*.tif')))
@@ -141,16 +141,16 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         img_list = [total_img[idx] for idx in sorted(uniq_idx)]
         print(f"Out of the initial {initial_count} images, {len(img_list)} will be orthorectified using adjusted cameras")
 
-    if cam is not None:
-        #cam = os.path.abspath(cam)
-        if 'run' in os.path.basename(cam):
-            cam_list = [glob.glob(cam+'-'+os.path.splitext(os.path.basename(x))[0]+'*.tsai')[0] for x in img_list]
-            print("No of cameras is {}".format(len(cam_list)))
-            
-        else:
-            cam_list = [glob.glob(os.path.join(cam,os.path.splitext(os.path.basename(x))[0]+'*.tsai'))[0] for x in img_list]
-    if gcp is not None:
-        gcp_list = sorted(glob.glob(os.path.join(args.gcp, '*.gcp')))
+        if cam is not None:
+            #cam = os.path.abspath(cam)
+            if 'run' in os.path.basename(cam):
+                cam_list = [glob.glob(cam+'-'+os.path.splitext(os.path.basename(x))[0]+'*.tsai')[0] for x in img_list]
+                print("No of cameras is {}".format(len(cam_list)))
+                
+            else:
+                cam_list = [glob.glob(os.path.join(cam,os.path.splitext(os.path.basename(x))[0]+'*.tsai'))[0] for x in img_list]
+        if gcp is not None:
+            gcp_list = sorted(glob.glob(os.path.join(args.gcp, '*.gcp')))
     if bound:
         bound = gpd.read_file(args.bound)
         geo_crs = {'init':'epsg:4326'}
@@ -235,3 +235,60 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
         shutil.copy2(final_cam_stats,final_cam_stats_disk)
 
+    if mode == 'full_video':
+        df = pd.read_csv(frame_index)
+        # block to determine automatically overlap limit of 40 seconds for computing match points
+        df['dt'] = [datetime.strptime(date.split('+00:00')[0],'%Y-%m-%dT%H:%M:%S.%f') for date in df.datetime.values]
+        delta = (df.dt.values[1]-df.dt.values[0])/np.timedelta64(1, 's')
+        # i hardocde overlap limit to have 40 seconds coverage
+        overlap_limit = np.int(np.ceil(40/delta))
+        print("Calculated overlap limit as {}".format(overlap_limit))
+        img_list = [glob.glob(os.path.join(img,'*{}*.tiff'.format(x)))[0] for x in df.name.values]
+        cam_list = [glob.glob(os.path.join(cam,'*{}*.tsai'.format(x)))[0] for x in df.name.values]
+        gcp_list = [glob.glob(os.path.join(gcp,'*{}*.gcp'.format(x)))[0] for x in df.name.values]
+        #also append the clean gcp here
+        print(os.path.join(gcp,'*clean*_gcp.gcp'))
+        gcp_list.append(glob.glob(os.path.join(gcp,'*clean*_gcp.gcp'))[0])
+        round1_opts = get_ba_opts(
+            ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,ip_per_tile=4000,
+            num_iterations=num_iter,num_pass=num_pass,camera_weight=cam_wt,fixed_cam_idx=None,robust_threshold=None)
+        print("Running round 1 bundle adjustment for input video sequence")
+        if session = 'nadirpinhole':
+            ba_args = img_list+cam_list
+        else:
+            ba_args = img_list
+        # Check if this command executed till last
+        print('Running bundle adjustment round1')
+        run_cmd('bundle_adjust', round1_opts+ba_args)
+
+        # Make files used to evaluate solution quality
+        init_residual_fn_def = sorted(glob.glob(ba_prefix+'*initial*residuals*pointmap*.csv'))[0]
+        init_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*initial_residuals_*raw_pixels.txt'))[0]
+        init_per_cam_reproj_err_disk = os.path.splitext(init_per_cam_reproj_err)[0]+'_initial_per_cam_reproj_error.txt'
+        init_residual_fn = os.path.splitext(init_residual_fn_def)[0]+'_initial_reproj_error.csv' 
+        shutil.copy2(init_residual_fn_def,init_residual_fn)
+        shutil.copy2(init_per_cam_reproj_err,init_per_cam_reproj_err_disk)
+
+        # Copy final reprojection error files before transforming cameras
+        final_residual_fn_def = sorted(glob.glob(ba_prefix+'*final*residuals*pointmap*.csv'))[0]
+        final_residual_fn = os.path.splitext(final_residual_fn_def)[0]+'_final_reproj_error.csv'
+        final_per_cam_reproj_err = sorted(glob.glob(ba_prefix+'-*final_residuals*_raw_pixels.txt'))[0]
+        final_per_cam_reproj_err_disk = os.path.splitext(final_per_cam_reproj_err)[0]+'_final_per_cam_reproj_error.txt'
+        shutil.copy2(final_residual_fn_def,final_residual_fn)
+        shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
+
+        if session == 'nadirpinhole':
+            # prepare for second run to apply a constant transform to the self-consistent models using initial ground footprints
+            identifier = os.path.basename(cam_list[0]).split(df.name.values[0])[0]
+            print(ba_prefix+identifier+'-{}*.tsai'.format(df.name.values[0]))
+            cam_list = [glob.glob(ba_prefix+identifier+'-{}*.tsai'.format(img))[0] for img in df.name.values]
+            print(len(cam_list))
+            ba_args = img_list+cam_list+gcp_list
+
+        round2_opts = get_ba_opts(
+                ba_prefix, overlap_limit = overlap_limit, flavor='2round_gcp_2', session=session, gcp_transform=True,camera_weight=0,
+                num_iterations=0,num_pass=1)
+        
+        print("running round 2 bundle adjustment for input video sequence")
+        run_cmd('bundle_adjust', round2_opts+ba_args)
+        
