@@ -9,6 +9,8 @@ from distutils.spawn import find_executable
 from skysat_stereo import misc_geospatial as misc
 from skysat_stereo import asp_utils as asp
 from skysat_stereo import skysat
+from skysat_stereo import bundle_adjustment_lib as ba
+from skysat_stereo import skysat_stereo_workflow as workflow
 
 """
 Script for running the full pipeline based on workflow described in ISPRS 2020 submission
@@ -121,10 +123,15 @@ def main():
     if not os.path.exists(refdem_dir):
         os.makedirs(refdem_dir)
     shutil.copy2(coreg_dem,os.path.join(refdem_dir,os.path.basename(coreg_dem)))
-    shutil.copy2(ortho_dem,os.path.join(refdem_dir,os.path.basename(ortho_dem)))
+    if coreg_dem != ortho_dem:
+        diff_dem = True
+        shutil.copy2(ortho_dem,os.path.join(refdem_dir,os.path.basename(ortho_dem)))
+    else:
+        diff_dem = False
     # replace old variable names
     coreg_dem = os.path.join(refdem_dir,os.path.basename(coreg_dem))
     ortho_dem = os.path.join(refdem_dir,os.path.basename(ortho_dem))
+
 
     print("Computing Target UTM zones for orthorectification")
     gdf_frame_index = skysat.parse_frame_index(frame_index)
@@ -140,13 +147,12 @@ def main():
         gdf_proj.to_file(bound_fn,driver='GPKG')
 
     print("Cropping reference DEMs to extent of SkySat footprint + 1 km buffer")
-    asp.run_cmd('clip_raster_by_shp.py',[coreg_dem,bound_fn])
-    asp.run_cmd('trim_ndv.py',[os.path.splitext(coreg_dem)[0]+'_shpclip.tif'])
+    misc.clip_raster_by_shp_disk(coreg_dem,bound_fn)
+    misc.ndvtrim_function(os.path.splitext(coreg_dem)[0]+'_shpclip.tif')
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
-    if ortho_dem != coreg_dem:
-        clip_log = asp.run_cmd('clip_raster_by_shp.py',[ortho_dem,bound_fn])
-        print(clip_log)
-        asp.run_cmd('trim_ndv.py',[os.path.splitext(ortho_dem)[0]+'_shpclip.tif'])
+    if diff_dem:
+    misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
+        misc.ndvtrim_function(os.path.splitext(ortho_dem)[0]+'_shpclip.tif')
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:
         ortho_dem = coreg_dem
@@ -154,23 +160,22 @@ def main():
 
     if 1 in steps2run:
         print("Sampling video sequence and generating Frame Cameras")
-        frame_cam_cmd = ['-mode','video','-t','pinhole','-img',img_folder,'-outdir',cam_gcp_directory,
-                    '-video_sampling_mode','num_images','-sampler','60','-frame_index',frame_index,
-                    '-product_level', 'l1a','-dem',ortho_dem]
-        print(frame_cam_cmd)
-        asp.run_cmd('skysat_preprocess.py',frame_cam_cmd)
+        cam_gen_log = workflow.skysat_preprocess(img_folder,mode='video',product_level='l1a',
+            outdir=cam_gcp_directory,sampler=60,sampling='num_images',frame_index=frame_index,
+            dem=ortho_dem)
     # read the frame_index.csv which contains the info for sampled scenes only
     print(cam_gcp_directory)
+    #now point to the subsampled frame_index file
     frame_index = glob.glob(os.path.join(cam_gcp_directory,'*frame*.csv'))[0]
 
     if 2 in steps2run:
         # this is bundle adjustment step
-        ba_cmd = ['-mode', 'full_video', '-t', 'nadirpinhole', '-img', img_folder, '-gcp',cam_gcp_directory,
-                  '-cam', cam_gcp_directory, '-frame_index', frame_index, '-num_iter', '2000', 
-                  '-num_pass', '3','-ba_prefix',ba_prefix]
         print("Running bundle adjustment for the input video sequence")
-        asp.run_cmd('ba_skysat.py',ba_cmd)
-        
+
+        ba.bundle_adjustment_stable(img=img_folder,ba_prefix=ba_prefix,cam=cam_gcp_directory,
+            session='nadirpinhole',num_iter=2000,num_pass=3,gcp=cam_gcp_directory,
+            frame_index=frame_index,mode=full_video)
+                
 
     if 3 in steps2run:
         # this is stereo step
