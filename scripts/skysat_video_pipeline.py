@@ -25,6 +25,9 @@ def getparser():
                        help='use hole-filled low res DEM produced from bundle-adjusted camera for orthorectification, (default: %(default)s)')
     parser.add_argument('-coregdem',default=None,type=str,help='path to reference DEM to use in coregisteration')
     parser.add_argument('-mask_dem',default=1,type=int,choices=[1,0],help='mask reference DEM for static surfaces before coreg (default: %(default)s)')
+    mask_opt = ['glaciers','glaciers+nlcd']
+    parser.add_argument('-mask_dem_opt',default='glaciers',choices=mask_opt,help='surfaces to mask if -mask_dem=1, default is glaciers which uses RGI polygons.\
+                        If processing in CONUS, the option of glaciers+nlcd also additionaly masks out forest surfaces')
     parser.add_argument('-ortho_workflow',default=1,type=int,choices=[1,0],help='option to orthorectify before stereo or not')
     parser.add_argument('-block_matching',default=0,type=int,choices=[1,0],help='whether to use block matching in final stereo matching, default is 0 (not)')
     parser.add_argument('-mvs', default=0, type=int, choices=[1,0], help='1: Use multiview stereo triangulation for video data\
@@ -151,7 +154,7 @@ def main():
     misc.ndvtrim_function(os.path.splitext(coreg_dem)[0]+'_shpclip.tif')
     coreg_dem = os.path.splitext(coreg_dem)[0]+'_shpclip_trim.tif'
     if diff_dem:
-    misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
+        misc.clip_raster_by_shp_disk(ortho_dem,bound_buffer_fn)
         misc.ndvtrim_function(os.path.splitext(ortho_dem)[0]+'_shpclip.tif')
         ortho_dem = os.path.splitext(ortho_dem)[0]+'_shpclip_trim.tif'    
     else:
@@ -161,7 +164,7 @@ def main():
     if 1 in steps2run:
         print("Sampling video sequence and generating Frame Cameras")
         cam_gen_log = workflow.skysat_preprocess(img_folder,mode='video',product_level='l1a',
-            outdir=cam_gcp_directory,sampler=60,sampling='num_images',frame_index=frame_index,
+            outdir=cam_gcp_directory,sampler=60,sampling='num_images',frame_index_fn=frame_index,
             dem=ortho_dem)
     # read the frame_index.csv which contains the info for sampled scenes only
     print(cam_gcp_directory)
@@ -172,9 +175,9 @@ def main():
         # this is bundle adjustment step
         print("Running bundle adjustment for the input video sequence")
 
-        ba.bundle_adjustment_stable(img=img_folder,ba_prefix=ba_prefix,cam=cam_gcp_directory,
+        ba.bundle_adjust_stable(img=img_folder,ba_prefix=ba_prefix,cam=cam_gcp_directory,
             session='nadirpinhole',num_iter=2000,num_pass=3,gcp=cam_gcp_directory,
-            frame_index=frame_index,mode=full_video)
+            frame_index=frame_index,mode='full_video')
                 
 
     if 3 in steps2run:
@@ -187,60 +190,56 @@ def main():
             if args.mvs == 1:
                 print("MVS not implemented on non-orthorectified scenes, exiting")
                 sys.exit()
-            stereo_cmd = ['-mode','video','-threads','2','-t','nadirpinhole','-img',img_folder,
-                     '-frame_index',frame_index,'-outfol', final_stereo_dir, '-sampling_interval','10',
-                      '-ba_prefix',ba_prefix+'-run','-full_extent','1']
-            asp.run_cmd(stereo_cmd)
+            workflow.execute_skysat_stereo(img_folder,final_stereo_dir,
+                ba_prefix=ba_prefix+'-run',mode='video',threads=2,
+                session='nadirpinhole',frame_index=frame_index,sampling_interval=10,
+                full_extent=1)
+            
         else:
             if args.produce_low_res_for_ortho == 1:
                 # will need to produce low res dem using block matching on L1A images and bundle adjusted cameras
                 # this was used for the 2 St. Helen's case studies in SkySat stereo manuscript
-                stereo_cmd = ['-mode','video','-threads','2','-t','nadirpinhole','-img',img_folder,
-                         '-frame_index',frame_index,'-outfol', init_stereo_dir, '-sampling_interval','10',
-                         '-ba_prefix',ba_prefix+'-run','-full_extent','1','-block','1','-texture','low']
-                print("Running stereo with block matching for producing orthorectification DEM")
-                asp.run_cmd('skysat_stereo_cli.py',stereo_cmd)
+                print("Running stereo with block matching for producing consistent orthorectification DEM")
+                workflow.execute_skysat_stereo(img_folder,init_stereo_dir,
+                    ba_prefix=ba_prefix+'-run',mode='video',threads=2,
+                    session='nadirpinhole',frame_index=frame_index,sampling_interval=10,
+                    full_extent=1,block=1,texture='low')
+                
                 # query point clouds
                 pc_list = sorted(glob.glob(os.path.join(init_stereo_dir,'12*/run-PC.tif')))
                 # grid into DEMs
-                grid_cmd = ['-mode','gridding_only','-tr','4','-tsrs',epsg_code,'-point_cloud_list'] + pc_list
                 print("Gridding block matching point clouds")
-                asp.run_cmd('skysat_pc_cam.py',grid_cmd)
+                workflow.gridding_wrapper(pc_list,tr=4,tsrs=epsg_code)
                 dem_list = sorted(glob.glob(os.path.join(init_stereo_dir,'12*/run-DEM.tif')))
                 hole_filled_low_res_dem = os.path.join(init_stereo_dir,'block_matching_hole_filled_dem_mos.tif')
-                mos_cmd = ['--dem-blur-sigma','9','--median','-o', hole_filled_low_res_dem]
-                asp.run_cmd('dem_mosaic', mos_cmd+dem_list)
+                workflow.dem_mosaic_holefill_wrapper(input_dem_list=dem_list,
+                    output_dem_path=hole_filled_low_res_dem)
                 dem_for_ortho = hole_filled_low_res_dem
-
             else:
                 # this argument will use input orhtodem (used for camera resection) as input for orthorectification
                 dem_for_ortho = ortho_dem
 
             print("Running intermediate orthorectification")
-            ortho_cmd = ['-img_folder',img_folder,'-session','pinhole','-out_folder',intermediate_ortho_dir,
-                        '-tsrs',epsg_code,'-DEM',dem_for_ortho,'-mode','science','-orthomosaic','0','-data','video',
-                        '-frame_index',frame_index,'-ba_prefix',ba_prefix+'-run']
-            asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
-
+            workflow.execute_skysat_orhtorectification(images=img_folder,session='pinhole',
+                outfolder=intermediate_ortho_dir,frame_index_fn=frame_index,tsrs=epsg_code,
+                dem=dem_for_ortho,mode='science',data='video',ba_prefix=ba_prefix+'-run')
             ## Now run final stereo
-            stereo_cmd = ['-mode','video','-threads','2','-t','pinholemappinhole','-img',intermediate_ortho_dir,
-                         '-frame_index',frame_index,'-outfol', final_stereo_dir, '-sampling_interval','10',
-                         '-ba_prefix',ba_prefix+'-run','-full_extent','1','-dem',dem_for_ortho,
-                         '-mvs',str(args.mvs),'-block',str(args.block_matching)]
 
             print("Running final stereo reconstruction")
-            asp.run_cmd('skysat_stereo_cli.py',stereo_cmd)
+            workflow.execute_skysat_stereo(intermediate_ortho_dir,final_stereo_dir,
+                ba_prefix=ba_prefix+'-run',mode='video',session='pinholemappinhole',
+                frame_index=frame_index,sampling_interval=10,full_extent=1,
+                dem=dem_for_ortho,mvs=args.mvs,block=args.block_matching)
+            
            
    
     if 4 in steps2run:
         pc_list = sorted(glob.glob(os.path.join(final_stereo_dir,'12*/run-PC.tif'))) 
         print(f"Identified {len(pc_list)} clouds")
         # this is dem gridding followed by mosaicing
-        dem_grid_cmd = ['-mode','gridding_only', '-tr', '2', '-tsrs',epsg_code,'-point_cloud_list'] + pc_list
-        asp.run_cmd('skysat_pc_cam.py',dem_grid_cmd)
+        workflow.gridding_wrapper(pc_list,tr=2,tsrs=epsg_code)
         print("Mosaicing DEMs")
-        dem_mos_cmd = ['-mode','video','-DEM_folder',final_stereo_dir,'-out_folder',mos_dem_dir]
-        asp.run_cmd('skysat_dem_mos.py',dem_mos_cmd)
+        workflow.dem_mosaic_wrapper(final_stereo_dir,mode='video',out_folder=mos_dem_dir) 
 
 
     if 5 in steps2run:
@@ -252,38 +251,42 @@ def main():
         # actually use dem_mask.py with options of nlcd, nlcd_filter (not_forest) and of course RGI glacier polygons
         if args.mask_dem == 1:
             # this might change for non-US sites, best to use bareground files
-            mask_dem_cmd = ['--nlcd','--glaciers']
-            print("Masking reference DEM to static surfaces")
-            asp.run_cmd('dem_mask.py',mask_dem_cmd+[os.path.abspath(coreg_dem)])
+            if args.mask_dem_opt == 'glaciers':
+                mask_list = ['glaciers']
+            elif args.msak_dem_opt == 'glaciers+nlcd':
+                mask_list = ['nlcd','glaciers'] 
+            print("Masking reference DEM to static surfaces") 
+            misc.dem_mask_disk(mask_list,os.path.abspath(coreg_dem))
             coreg_dem = os.path.splitext(coreg_dem)[0]+'_ref.tif'
 
         # now perform alignment
         median_mos_dem = glob.glob(os.path.join(mos_dem_dir,'video_median_mos.tif'))[0]
         # use the composite filtered by count and NMAD metrics
         median_mos_dem_filt = glob.glob(os.path.join(mos_dem_dir,'video_median_mos_filt*.tif'))[0]
-        dem_align_cmd = ['-mode','classic_dem_align','-max_displacement','100','-refdem',coreg_dem,
-                         '-source_dem',median_mos_dem_filt,'-outprefix',os.path.join(alignment_dir,'run')]
         print("Aligning DEMs")
-        asp.run_cmd('skysat_pc_cam.py',dem_align_cmd)
+        workflow.alignment_wrapper_single(coreg_dem,source_dem=median_mos_dem_filt,
+            max_displacement=100,outprefix=os.path.join(alignment_dir,'run'))
+           
 
     if 6 in steps2run:
         # this steps aligns the frame camera models
         camera_list = sorted(glob.glob(os.path.join(init_ba,'run-run-*.tsai')))
         print(f"Detected {len(camera_list)} cameras to be registered to DEM")
         alignment_vector = glob.glob(os.path.join(alignment_dir,'alignment_vector.txt'))[0]
-        camera_align_cmd = ['-mode','align_cameras','-transform',alignment_vector,
-                            '-outfol',aligned_cam_dir,'-cam_list']+camera_list
+        if not os.path.exists(aligned_cam_dir):
+            os.makedirs(aligned_cam_dir)
         print("Aligning cameras")
-        asp.run_cmd('skysat_pc_cam.py',camera_align_cmd)
-
+        workflow.align_cameras_wrapper(input_camera_list=camera_list,transform_txt=alignment_vector,
+            outfolder=aligned_cam_dir)
+        
+    
     if 7 in steps2run:
         # this produces final georegistered orthomosaics
         georegistered_median_dem = glob.glob(os.path.join(alignment_dir,'run-trans_*DEM.tif'))[0]
-        ortho_cmd = ['-img_folder',img_folder,'-session','pinhole','-out_folder',final_ortho_dir,
-                        '-tsrs',epsg_code,'-DEM',georegistered_median_dem,'-mode','science','-orthomosaic','1','-data','video',
-		     '-ba_prefix',os.path.join(aligned_cam_dir,'run-run'),'-frame_index',frame_index]
         print("Running final orthomsaic creation")
-        asp.run_cmd('skysat_orthorectify.py',ortho_cmd)
+        workflow.execute_skysat_orhtorectification(images=img_folder,session='pinhole',
+            out_folder=final_ortho_dir,tsrs=epsg_code,dem=georegistered_median_dem,
+            mode='science',orthomosaic=1,data='video',ba_prefix=os.path.join(aligned_cam_dir,'run-run'))
 
     if 8 in steps2run:
         # this produces a final plot of orthoimage,DEM, NMAD and countmaps
