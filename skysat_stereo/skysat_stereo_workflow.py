@@ -434,7 +434,7 @@ def gridding_wrapper(pc_list,tr,tsrs=None):
     p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
     print(p2dem_log)
 
-def workflow.dem_mosaic_holefill_wrapper(input_dem_list,output_dem_path):
+def dem_mosaic_holefill_wrapper(input_dem_list,output_dem_path):
     mos_cmd = ['--dem-blur-sigma','9','--median','-o', output_dem_path]
     asp.run_cmd('dem_mosaic', mos_cmd+input_dem_list)
 
