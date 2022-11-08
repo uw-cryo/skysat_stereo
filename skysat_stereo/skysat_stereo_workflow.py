@@ -89,7 +89,7 @@ def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_t
     
     return stereo_only_df, out_df
 
-def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_level='l1a',
+def skysat_preprocess(img_folder,mode,sampling=None,frame_index_fn=None,product_level='l1a',
         sampler=5,overlap_pkl=None,dem=None,outdir=None):
     """
     """
@@ -100,11 +100,11 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
         except:
             os.makedirs(outdir)
     if mode == 'video':
-        frame_index = skysat.parse_frame_index(frame_index,True)
+        outdf = os.path.join(outdir,os.path.basename(frame_index_fn))
+        frame_index = skysat.parse_frame_index(frame_index_fn,True)
         product_level = 'l1a'
         num_samples = len(frame_index)
         frames = frame_index.name.values
-        outdf = os.path.join(outdir,os.path.basename(frame_index))
         if sampling == 'sampling_interval':
             print("Hardcoded sampling interval results in frame exclusion at the end of the video sequence based on step size, better to chose the num_images mode and the program will equally distribute accordingly")
             idx = np.arange(0,num_samples,sampler)
@@ -120,11 +120,12 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
 
         #this is camera/gcp initialisation
         n = len(sub_sampled_frames)
+        print(f"Number of subsampled frames = {n}")
         img_list = [glob.glob(os.path.join(img_folder,'{}*.tiff'.format(frame)))[0] for frame in sub_sampled_frames]
         pitch = [1]*n
         out_fn = [os.path.join(outdir,'{}_frame_idx.tsai'.format(frame)) for frame in sub_sampled_frames]
         out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
-        frame_index = [frame_index]*n
+        frame_index_fn = [frame_index_fn]*n
        	camera = [None]*n
         gcp_factor = 4
 
@@ -155,7 +156,7 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
     n_proc = 30
     #n_proc = cpu_count()
     print("Starting camera resection procedure")
-    cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index,num_cpus = n_proc)
+    cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index_fn,num_cpus = n_proc)
     print("writing gcp with basename removed")
     # count expexted gcp 
     print(f"Total expected GCP {gcp_factor*n}")    
@@ -243,6 +244,7 @@ def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',t
 
         if frame_index_fn is not None:
             frame_index = skysat.parse_frame_index(frame_index_fn)
+            dir = images
             img_list = [glob.glob(os.path.join(dir,'{}*.tiff'.format(frame)))[0] for frame in frame_index.name.values]
             print("no of images is {}".format(len(img_list)))
         img_prefix = [os.path.splitext(os.path.basename(img))[0] for img in img_list]
@@ -431,6 +433,11 @@ def gridding_wrapper(pc_list,tr,tsrs=None):
     job_list = [point2dem_opts + [pc] for pc in pc_list]
     p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
     print(p2dem_log)
+
+def workflow.dem_mosaic_holefill_wrapper(input_dem_list,output_dem_path):
+    mos_cmd = ['--dem-blur-sigma','9','--median','-o', output_dem_path]
+    asp.run_cmd('dem_mosaic', mos_cmd+input_dem_list)
+
     
     
 def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
