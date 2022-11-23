@@ -18,10 +18,10 @@ import pandas as pd
 def getparser():
     parser = argparse.ArgumentParser(description='Script to make overlapping pairs based on user defined minimum overlap percentage')
     parser.add_argument('-img_folder', help='Folder containing images with RPC information', required=True)
-    parser.add_argument('-percentage', '--percentage', help='percentage_overlap between 0 to 1',type=float, required=True)
-    parser.add_argument('-outfn','--out_fn',help='Text file containing the overlapping pairs')
+    parser.add_argument('-percentage', '--percentage', help='percentage_overlap between 0 to 1', type=float, required=True)
+    parser.add_argument('-outfn','--out_fn',help='Text file containing the overlapping pairs', type=str, required=True)
     parser.add_argument('-cross_track',action='store_true',help='Also make cross-track pairs')
-    parser.add_argument('-aoi_bbox',help='Return interesecting footprint within this aoi only',default=None)
+    parser.add_argument('-aoi_bbox',help='Return interesecting footprint within this aoi only', default=None)
     return parser
 
 # Global var
