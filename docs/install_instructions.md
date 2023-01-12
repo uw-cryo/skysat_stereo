@@ -2,7 +2,7 @@
 
 - We use srtm4 package, which for now needs developer version of libtiff
 - So first of all, install libtif on your machine using: `apt-get install libtiff-dev` for Ubuntu or `brew install libtiff` for (macOS)
-- Download Ames Stereo Pipeline (v 3.0.1 alpha) executables from [here](https://github.com/NeoGeographyToolkit/StereoPipeline/releases/download/2022-04-22-daily-build/StereoPipeline-3.0.1-alpha-2022-04-22-x86_64-Linux.tar.bz2). Untar the downloaded file, and add the `bin` folder in the untarred folder to your `.bashrc` profile.  
+- Download Ames Stereo Pipeline (v 3.2.0) executables from [here](https://github.com/NeoGeographyToolkit/StereoPipeline/releases/download/3.1.0/StereoPipeline-3.1.0-2022-05-18-x86_64-Linux.tar.bz2)). Untar the downloaded file, and add the `bin` folder in the untarred folder to your `.bashrc` profile.  
 - Clone the `skysat_stereo` repo to the location of your choice using `https://github.com/uw-cryo/skysat_stereo.git`
 - We recommend using conda for managing packages. Powerusers can have a look at the `environment.yml` file in the github repository to make an environment using that.
 - Otherwise, one can simply initiate a conda environment to avoid conflicts using the environment.yml file.
