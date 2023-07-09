@@ -97,7 +97,7 @@ def prepare_stereopair_list_rtree(img_folder,perc_overlap,out_fn,aoi_bbox=None,c
     valid_gdf = gdf[gdf['sep1'].isin(valid_combinations)]
     valid_gdf['area_intsec'] = valid_gdf.geometry.area
     valid_gdf['area_intersect_perc'] = valid_gdf['area_intsec']/valid_gdf['area_1']
-    m_area = valid_gdf['area_intersect_perc']>0.05
+    m_area = valid_gdf['area_intersect_perc'] > perc_overlap
     valid_gdf = valid_gdf[m_area]
 
 
