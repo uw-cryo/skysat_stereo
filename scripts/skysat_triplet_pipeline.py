@@ -151,7 +151,7 @@ def main():
         # Inputs: Image directory, minimum overlap percentage 
         overlap_perc = 0.01 # 1 percent essentially
         
-        workflow.prepare_stereopair_list(img_folder,overlap_perc,overlap_full_txt,
+        workflow.prepare_stereopair_list_rtree(img_folder,overlap_perc,overlap_full_txt,
                                          aoi_bbox=args.aoi_bbox)
         
 

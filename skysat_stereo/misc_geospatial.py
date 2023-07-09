@@ -59,7 +59,7 @@ def plot_composite_fig(ortho,dem,count,nmad,outfn,product='triplet'):
     plt.tight_layout()
     f.savefig(outfn,dpi=300,bbox_inches='tight',pad_inches=0.1)
 
-def clip_raster_by_shp_disk(r_fn,shp_fn,invert=False):
+def clip_raster_by_shp_disk(r_fn,shp_fn,extent='raster',invert=False,out_fn=None):
     """
     # this is a lightweight version of directly being used from https://github.com/dshean/pygeotools/blob/master/pygeotools/clip_raster_by_shp.py
     # meant to limit subprocess calls
@@ -69,8 +69,9 @@ def clip_raster_by_shp_disk(r_fn,shp_fn,invert=False):
     if not os.path.exists(shp_fn):
         sys.exit("Unable to find shp_fn: %s" % shp_fn)
      #Do the clipping
-    r, r_ds = geolib.raster_shpclip(r_fn, shp_fn,extent='raster',invert=invert)
-    out_fn = os.path.splitext(r_fn)[0]+'_shpclip.tif'
+    r, r_ds = geolib.raster_shpclip(r_fn, shp_fn,extent=extent,invert=invert)
+    if not out_fn:
+        out_fn = os.path.splitext(r_fn)[0]+'_shpclip.tif'
     iolib.writeGTiff(r, out_fn, r_ds)
 
 def ndvtrim_function(src_fn):

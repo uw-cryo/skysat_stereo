@@ -36,7 +36,7 @@ def main():
     session = args.t
     img_folder = os.path.abspath(args.img)
     outdir = os.path.abspath(args.outdir)
-    cam_gen_log = workflow.skysat_preprocess(img_folder,mode,sampling=args.video_sampling_mode,frame_index=args.frame_index,
+    cam_gen_log = workflow.skysat_preprocess(img_folder,mode,sampling=args.video_sampling_mode,frame_index_fn=args.frame_index,
         product_level=args.product_level,sampler=args.sampler,overlap_pkl=args.overlap_pkl,dem=args.dem,
         outdir=args.outdir)
         

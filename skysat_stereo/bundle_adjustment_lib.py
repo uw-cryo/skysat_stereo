@@ -14,7 +14,8 @@ def run_cmd(bin, args, **kw):
     # Note, need to add full executable
     # from dshean/vmap.py
     #binpath = os.path.join('/home/sbhushan/src/StereoPipeline/bin',bin)
-    binpath = find_executable(bin)
+    #binpath = find_executable(bin)
+    binpath = '/nobackupp16/swbuild3/sbhusha1/StereoPipeline-3.1.1-alpha-2022-10-31-x86_64-Linux/bin/bundle_adjust'
     if binpath is None:
         msg = ("Unable to find executable %s\n"
         "Install ASP and ensure it is in your PATH env variable\n"
@@ -118,7 +119,7 @@ def get_ba_opts(ba_prefix, ip_per_tile=4000,camera_weight=None,translation_weigh
 def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=None,
                         input_adjustments=None,overlap_list=None,gcp=None,
                         mode='full_triplet',bound=None,camera_param2float='trans+rot',
-                        dem=None,num_iter=2000,num_pass=2,frame_index=None,gcp=None):
+                        dem=None,num_iter=2000,num_pass=2,frame_index=None):
     """
     """
     img_list = sorted(glob.glob(os.path.join(img,'*.tif')))
@@ -235,7 +236,7 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
         shutil.copy2(final_per_cam_reproj_err,final_per_cam_reproj_err_disk)
         shutil.copy2(final_cam_stats,final_cam_stats_disk)
 
-    if mode == 'full_video':
+    elif mode == 'full_video':
         df = pd.read_csv(frame_index)
         # block to determine automatically overlap limit of 40 seconds for computing match points
         df['dt'] = [datetime.strptime(date.split('+00:00')[0],'%Y-%m-%dT%H:%M:%S.%f') for date in df.datetime.values]
@@ -253,7 +254,7 @@ def bundle_adjust_stable(img,ba_prefix,cam=None,session='rpc',initial_transform=
             ba_prefix, overlap_limit=overlap_limit, flavor='2round_gcp_1', session=session,ip_per_tile=4000,
             num_iterations=num_iter,num_pass=num_pass,camera_weight=cam_wt,fixed_cam_idx=None,robust_threshold=None)
         print("Running round 1 bundle adjustment for input video sequence")
-        if session = 'nadirpinhole':
+        if session == 'nadirpinhole':
             ba_args = img_list+cam_list
         else:
             ba_args = img_list
