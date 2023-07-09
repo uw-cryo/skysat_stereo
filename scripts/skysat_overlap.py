@@ -34,7 +34,7 @@ def main():
     parser = getparser()
     args = parser.parse_args()
     img_folder = args.img_folder
-    workflow.prepare_stereopair_list(img_folder,args.percentage,args.out_fn,args.aoi_bbox,cross_track=args.cross_track)
+    workflow.prepare_stereopair_list_rtree(img_folder,args.percentage,args.out_fn,args.aoi_bbox,cross_track=args.cross_track)
     print(f'Script completed in time {time.time()-init_time}')
 
 if __name__=="__main__":

@@ -40,7 +40,7 @@ def skysat_footprint(img_fn,incrs=None):
     nx = img_ds.RasterXSize
     ny = img_ds.RasterYSize
     #img_coord (0,0), (nx,0), (nx,ny), (0,ny) correspond to ul,ur,lr,ll
-    z = np.float(img_ds.GetMetadata('RPC')['HEIGHT_OFF'])
+    z = float(img_ds.GetMetadata('RPC')['HEIGHT_OFF'])
     #z = np.float(ht.split(' ',1)[1].splitlines()[0])
     img_x = [0,nx,nx,0]
     img_y = [0,0,ny,ny]

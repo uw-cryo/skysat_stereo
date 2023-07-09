@@ -363,7 +363,7 @@ def mapproject(img,outfn,session='rpc',dem='WGS84',tr=None,t_srs='EPSG:4326',cam
     out = run_cmd('mapproject',map_opt+map_args)
     return out
 
-def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
+def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None,extent=None):
     """
     mosaic  input image list using ASP's dem_mosaic program.
     See dem_mosaic documentation here: https://stereopipeline.readthedocs.io/en/latest/tools/dem_mosaic.html
@@ -395,6 +395,9 @@ def dem_mosaic(img_list,outfn,tr=None,tsrs=None,stats=None,tile_size=None):
         dem_mosaic_opt.extend(['--tr', str(tr)])
     if tsrs:
         dem_mosaic_opt.extend(['--t_srs', tsrs])
+    if extent:
+        xmin,ymin,xmax,ymax = extent.split(' ')
+        dem_mosaic_opt.extend(['--t_projwin', xmin,ymin,xmax,ymax])
     dem_mosaic_args = img_list
     if tile_size:
         # will first perform tile-wise vertical mosaicing

@@ -17,6 +17,108 @@ from osgeo import osr
 from pyproj import Transformer
 
 
+def prepare_stereopair_list_rtree(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_track=False):
+    """
+    Parameters
+    ------------
+    img_folder: str
+        path to folder containing images
+    perc_overlap: float
+        minimum percentage overlap to qualify as stereo pair (0 to 1)
+    out_fn: str
+        path to output file where overlap list is saved
+    aoi_bbox:str
+        path to aoi shapefile within which pairs are restricted to
+    cross_track: bool
+        If True, also form cross_track pairs
+    Returns
+    ------------
+    stereo_only_df: pd.Dataframe 
+        overlap list with only along-track stereo pairs
+    out_df: pd.Dataframe
+        overlap_list with pairs formed from all intersecting image pairs
+    
+    
+    """ 
+    from itertools import combinations
+    from p_tqdm import p_map
+    geo_crs = 'EPSG:4326'
+    # populate img list
+    try:
+        img_list = sorted(glob.glob(os.path.join(img_folder,'*.tif')))
+        print("Number of images {}".format(len(img_list)))
+    except:
+        print ("No images found in the directory. Make sure they end with a .tif extension")
+        sys.exit()
+    out_shp = os.path.splitext(out_fn)[0]+'_bound.gpkg'
+    n_proc = iolib.cpu_count()
+    shp_list = p_map(skysat.skysat_footprint,img_list,num_cpus=2*n_proc)
+    merged_shape = misc.shp_merger(shp_list)
+    bbox = merged_shape.total_bounds
+    merged_shape = misc.shp_merger(shp_list)
+    id = [os.path.basename(x) for x in merged_shape.img.values]
+    merged_shape['id'] = id
+    bbox = merged_shape.total_bounds
+    print (f'Bounding box lon_lat is:{bbox}')
+    print (f'Bounding box lon_lat is:{bbox}')
+    bound_poly = Polygon([[bbox[0],bbox[3]],[bbox[2],bbox[3]],[bbox[2],bbox[1]],[bbox[0],bbox[1]]])
+    bound_shp = gpd.GeoDataFrame(index=[0],geometry=[bound_poly],crs=geo_crs)
+    bound_centroid = bound_shp.centroid
+    cx = bound_centroid.x.values[0]
+    cy = bound_centroid.y.values[0]
+    pad = np.ptp([bbox[3],bbox[1]])/6.0
+    lat_1 = bbox[1]+pad
+    lat_2 = bbox[3]-pad
+    #local_ortho = '+proj=ortho +lat_0={} +lon_0={}'.format(cy,cx)
+    local_aea = "+proj=aea +lat_1={} +lat_2={} +lat_0={} +lon_0={} +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs".format(lat_1,lat_2,cy,cx)
+    print ('Local Equal Area coordinate system is : {} \n'.format(local_aea))
+    print('Saving bound shapefile at {} \n'.format(out_shp))
+    bound_shp.to_file(out_shp,driver='GPKG')
+    
+    # condition to check bbox_aoi
+    if aoi_bbox is not None:
+        bbox = gpd.read_file(aoi_bbox)
+        mask = merged_shape.to_crs(bbox.crs).intersects(bbox)
+        #img_list = merged_shape[mask].img.values
+
+    
+    
+    
+    gdf = merged_shape.to_crs(local_aea)
+    gdf['area'] = gdf.geometry.area
+    valid_combinations = list(combinations(gdf.id.values,2))
+    n_comb = len(valid_combinations)
+    # we use this later to prevent non-unique contributions
+    valid_combinations = [f'{x[0]}__{x[1]}' for x in valid_combinations]
+    def make_sep(row):
+        return f"{row['id_1']}__{row['id_2']}"
+    gdf = gpd.overlay(gdf,gdf,how='intersection')
+    gdf['sep1'] = gdf.apply(make_sep,axis=1)
+    valid_gdf = gdf[gdf['sep1'].isin(valid_combinations)]
+    valid_gdf['area_intsec'] = valid_gdf.geometry.area
+    valid_gdf['area_intersect_perc'] = valid_gdf['area_intsec']/valid_gdf['area_1']
+    m_area = valid_gdf['area_intersect_perc']>0.05
+    valid_gdf = valid_gdf[m_area]
+
+
+    print('Number of valid combinations are {}, out of total {}  input images making total combinations {}\n'.format(len(valid_gdf),len(img_list),len(valid_combinations)))
+    #to mantain compatibility with old code in the first file
+    valid_gdf['abs_img1'] = [os.path.abspath(img) for img in valid_gdf.img_1.values]
+    valid_gdf['abs_img2'] = [os.path.abspath(img) for img in valid_gdf.img_2.values]
+    valid_gdf[['abs_img1','abs_img2']].to_csv(out_fn,sep=' ',header=False,index=False)
+    
+    out_fn_overlap = os.path.splitext(out_fn)[0]+'_with_overlap_perc.pkl'
+    out_df = pd.DataFrame({'img1':valid_gdf['img_1'].values,'img2':valid_gdf['img_2'].values,'overlap_perc':valid_gdf['area_intersect_perc'].values})
+    out_df.to_pickle(out_fn_overlap)
+    
+    out_fn_stereo = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.pkl'
+    stereo_only_df = skysat.prep_trip_df(out_fn_overlap,cross_track=cross_track)
+    stereo_only_df.to_pickle(out_fn_stereo)
+    out_fn_stereo_ba = os.path.splitext(out_fn_overlap)[0]+'_stereo_only.txt'
+    stereo_only_df[['img1','img2']].to_csv(out_fn_stereo_ba,sep=' ',header=False,index=False)
+    
+    return stereo_only_df, out_df
+
 def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_track=False):
     """
     """ 
@@ -89,7 +191,7 @@ def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_t
     
     return stereo_only_df, out_df
 
-def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_level='l1a',
+def skysat_preprocess(img_folder,mode,sampling=None,frame_index_fn=None,product_level='l1a',
         sampler=5,overlap_pkl=None,dem=None,outdir=None):
     """
     """
@@ -100,11 +202,11 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
         except:
             os.makedirs(outdir)
     if mode == 'video':
-        frame_index = skysat.parse_frame_index(frame_index,True)
+        outdf = os.path.join(outdir,os.path.basename(frame_index_fn))
+        frame_index = skysat.parse_frame_index(frame_index_fn,True)
         product_level = 'l1a'
         num_samples = len(frame_index)
         frames = frame_index.name.values
-        outdf = os.path.join(outdir,os.path.basename(frame_index))
         if sampling == 'sampling_interval':
             print("Hardcoded sampling interval results in frame exclusion at the end of the video sequence based on step size, better to chose the num_images mode and the program will equally distribute accordingly")
             idx = np.arange(0,num_samples,sampler)
@@ -120,11 +222,12 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
 
         #this is camera/gcp initialisation
         n = len(sub_sampled_frames)
+        print(f"Number of subsampled frames = {n}")
         img_list = [glob.glob(os.path.join(img_folder,'{}*.tiff'.format(frame)))[0] for frame in sub_sampled_frames]
         pitch = [1]*n
         out_fn = [os.path.join(outdir,'{}_frame_idx.tsai'.format(frame)) for frame in sub_sampled_frames]
         out_gcp = [os.path.join(outdir,'{}_frame_idx.gcp'.format(frame)) for frame in sub_sampled_frames]
-        frame_index = [frame_index]*n
+        frame_index_fn = [frame_index_fn]*n
        	camera = [None]*n
         gcp_factor = 4
 
@@ -141,7 +244,7 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
         out_fn = [os.path.join(outdir,'{}_rpc.tsai'.format(frame)) for frame in img_list]
         out_gcp = [os.path.join(outdir,'{}_rpc.gcp'.format(frame)) for frame in img_list]
         camera = cam_list
-        frame_index = [None]*n
+        frame_index_fn = [None]*n
         img_list = cam_list
         gcp_factor = 8
 
@@ -155,7 +258,7 @@ def skysat_preprocess(img_folder,mode,sampling=None,frame_index=None,product_lev
     n_proc = 30
     #n_proc = cpu_count()
     print("Starting camera resection procedure")
-    cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index,num_cpus = n_proc)
+    cam_gen_log = p_map(asp.cam_gen,img_list,fl,cx,cy,pitch,ht_datum,gcp_std,out_fn,out_gcp,datum,refdem,camera,frame_index_fn,num_cpus = n_proc)
     print("writing gcp with basename removed")
     # count expexted gcp 
     print(f"Total expected GCP {gcp_factor*n}")    
@@ -243,6 +346,7 @@ def execute_skysat_orhtorectification(images,outdir,data='triplet',dem='WGS84',t
 
         if frame_index_fn is not None:
             frame_index = skysat.parse_frame_index(frame_index_fn)
+            dir = images
             img_list = [glob.glob(os.path.join(dir,'{}*.tiff'.format(frame)))[0] for frame in frame_index.name.values]
             print("no of images is {}".format(len(img_list)))
         img_prefix = [os.path.splitext(os.path.basename(img))[0] for img in img_list]
@@ -431,6 +535,11 @@ def gridding_wrapper(pc_list,tr,tsrs=None):
     job_list = [point2dem_opts + [pc] for pc in pc_list]
     p2dem_log = p_map(asp.run_cmd,['point2dem'] * len(job_list), job_list, num_cpus = n_cpu)
     print(p2dem_log)
+
+def dem_mosaic_holefill_wrapper(input_dem_list,output_dem_path):
+    mos_cmd = ['--dem-blur-sigma','9','--median','-o', output_dem_path]
+    asp.run_cmd('dem_mosaic', mos_cmd+input_dem_list)
+
     
     
 def alignment_wrapper_single(ref_dem,source_dem,max_displacement,outprefix,
