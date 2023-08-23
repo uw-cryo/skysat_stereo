@@ -30,7 +30,15 @@ This project is under active development and we welcome contributions (informati
 10. [`skysat_video_pipeline.py`](/scripts/skysat_video_pipeline.py) - wrapper script for end to end video stereo processing workflow
 #### [notebooks](/notebooks/) - notebooks used during analysis and figure preparation
 
-## Sample products
+## Input products supported
+1. Triplet stereo or bi-stereo collections at **L1B level**. These images should be non-georeferenced and should have an accompanying RPC metadata with them. To make sure if you have the rpc information, do a gdalinfo in one of the images, and you should see RPC information printed out. 
+2. Video collections at **L1A level**. These images should be non-georeferenced, and should have a frame_index.csv file accompanying them, which contain the ground footprint and satellite attitude/ephemris data.
+   
+While ordering data from Planet, please make sure the correct data level is specified :)
+
+At this stage, *we do not support the L1A full frame triplet stereo products*, but we have developed an internal workflow logic, and are in the process of writing actual code for it. Thanks for your patience and interest :)
+
+## Sample output products
 ### SkySat Triplet Stereo
 ![triplet_product](/docs/img/Figure3.jpg)
 Figure 1: Orthoimage mosaic and DEM composite generated from a SkySat triplet stereo collection over Mt. Rainier, WA, USA. These final products were derived from L1B imagery that is &copy; Planet, 2019 (Planet Team, 2017).
