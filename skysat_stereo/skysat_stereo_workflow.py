@@ -142,7 +142,7 @@ def prepare_stereopair_list(img_folder,perc_overlap,out_fn,aoi_bbox=None,cross_t
     print (f'Bounding box lon_lat is:{bbox}')
     bound_poly = Polygon([[bbox[0],bbox[3]],[bbox[2],bbox[3]],[bbox[2],bbox[1]],[bbox[0],bbox[1]]])
     bound_shp = gpd.GeoDataFrame(index=[0],geometry=[bound_poly],crs=geo_crs)
-    bound_centroid = bound_shp.centroid
+    bound_centroid = bound_shp.to_crs('+proj=cea').centroid.to_crs(bound_shp.crs)
     cx = bound_centroid.x.values[0]
     cy = bound_centroid.y.values[0]
     pad = np.ptp([bbox[3],bbox[1]])/6.0
